@@ -1,0 +1,48 @@
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.swp
+
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+
+# Python virtualenv (공유 .venv)
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Node Modules / Build
+node_modules/
+dist/
+build/
+.cache/
+.nyc_output/
+coverage/
+*.tsbuildinfo
+
+# Docker / Compose volumes
+infra/docker/volumes
+infra/docker/volumes/**
+!infra/docker/volumes/.gitkeep
+*.pid
+*.sock
+
+# Next.js / Frontend
+.next/
+out/
+.vercel/
+
+.prettierrc
+dev/
+apps/workers/title_worker/
+apps/web/
+apps/static/
+docs/todo/
+/docs/architecture/rag_index_contract.md
+Features_20251020.md

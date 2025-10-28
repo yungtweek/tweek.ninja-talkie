@@ -1,0 +1,5 @@
+# apps/gateway/.prettierignore
+.next
+dist
+build
+*.generated.ts

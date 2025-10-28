@@ -1,0 +1,3 @@
+# 🛡️ Auth Module Overview
+
+The Auth module in the Gateway provides robust JWT-based authentication for both HTTP and GraphQL clients. It manages access and refresh tokens, supports authentication over WebSocket connections, and injects user context securely into application endpoints. With modular design, strict type validation using Zod, and adaptable guards, it ensures secure and seamless authentication workflows across real-time and standard API interactions.

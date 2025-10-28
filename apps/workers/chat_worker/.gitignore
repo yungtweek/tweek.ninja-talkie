@@ -1,0 +1,18 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyc
+
+# Virtualenv (개별로 두는 경우)
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Local data / debug dumps
+*.sqlite3
+*.db
+*.log

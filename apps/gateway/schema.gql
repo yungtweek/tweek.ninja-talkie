@@ -1,0 +1,174 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type ChatHistory {
+  messages(before: String, first: Int): MessageConnection!
+  session: ChatSession!
+}
+
+type ChatSession {
+  id: ID!
+  messages: MessageConnection!
+}
+
+type ChatSessions {
+  createdAt: DateTime!
+  id: ID!
+  lastMessageAt: DateTime
+  lastMessagePreview: String
+  title: String
+  updatedAt: DateTime!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type DeleteChatSessionResult {
+  ok: Boolean!
+  sessionId: ID!
+  status: String!
+}
+
+type DeleteFilePayload {
+  deletedCount: Float
+  fileId: ID
+  message: String
+  ok: Boolean!
+}
+
+type FileConnection {
+  edges: [FileEdge!]!
+  pageInfo: PageInfo!
+}
+
+type FileEdge {
+  cursor: String
+  node: FileListType!
+}
+
+type FileListType {
+  contentType: String
+  createdAt: DateTime!
+  filename: String!
+  id: ID!
+  size: Float
+  status: FileStatus!
+  uploadedAt: DateTime
+  visibility: FileVisibility!
+}
+
+input FileMetadataInput {
+  bucket: String!
+  checksumSha256Expected: String
+  contentType: String
+  etag: String
+  extension: String
+  filename: String!
+  key: String!
+  modifiedAt: DateTime
+  ownerId: String!
+  size: Float
+  sizeExpected: Float
+  status: FileStatus = PENDING
+  uploadedAt: DateTime
+  visibility: FileVisibility = PRIVATE
+}
+
+enum FileStatus {
+  DELETED
+  FAILED
+  INDEXED
+  PENDING
+  READY
+  VECTORIZED
+}
+
+type FileType {
+  bucket: String!
+  checksumSha256Expected: String
+  contentType: String
+  etag: String
+  extension: String
+  filename: String!
+  id: ID!
+  key: String!
+  modifiedAt: DateTime
+  ownerId: String!
+  size: Float
+  sizeExpected: Float
+  status: FileStatus!
+  uploadedAt: DateTime
+  visibility: FileVisibility!
+}
+
+enum FileVisibility {
+  DEPARTMENT
+  FOLLOWERS
+  PRIVATE
+  PUBLIC
+}
+
+type Message {
+  content: String!
+  id: ID!
+  messageIndex: Int!
+  role: String!
+  sourcesJson: String
+  turn: Int!
+}
+
+type MessageConnection {
+  edges: [MessageEdge!]!
+  pageInfo: PageInfo!
+}
+
+type MessageEdge {
+  cursor: String!
+  node: Message!
+}
+
+type Mutation {
+  deleteChatSession(sessionId: ID!): DeleteChatSessionResult!
+  deleteFile(fileId: ID!): DeleteFilePayload!
+  registerFile(input: FileMetadataInput!): FileType!
+}
+
+type PageInfo {
+  endCursor: String
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+}
+
+type Query {
+  chatHistory(id: ID!): ChatHistory!
+  chatSessions(after: String, first: Int): [ChatSessions!]!
+
+  """List files"""
+  files(after: String, first: Int!): FileConnection!
+}
+
+type SessionEvent {
+  id: ID
+  session: SessionSummary
+  type: SessionEventType!
+}
+
+enum SessionEventType {
+  CREATED
+  DELETED
+  UPDATED
+}
+
+type SessionSummary {
+  id: ID!
+  title: String
+}
+
+type Subscription {
+  fileStatusChanged(fileId: String!): FileType!
+  sessionEvents: SessionEvent!
+}

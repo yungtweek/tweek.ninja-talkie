@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    // Node 전용이면 DOM 빼도 OK
+    "declaration": true,
+    "declarationMap": true,
+    "module": "NodeNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2023",
+    "strict": true,
+    "skipLibCheck": true
+  }
+}

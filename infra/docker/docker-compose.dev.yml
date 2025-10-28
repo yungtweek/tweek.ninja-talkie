@@ -1,0 +1,159 @@
+# docker-compose.yml
+services:
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-16}  # 원하는 버전으로 변경 가능
+    container_name: postgres
+    restart: always
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-naruto}      # 원하는 유저명
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sasuke}  # 원하는 비밀번호
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}    # 원하는 DB명
+    volumes:
+      - ./volumes/postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:${REDIS_VERSION:-7}
+    container_name: redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - ./volumes/redis-data:/data
+    command: [ "redis-server", "--appendonly", "yes" ]
+
+  kafka:
+    image: docker.io/bitnamilegacy/kafka:${KAFKA_VERSION:-3.6}
+    container_name: kafka
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    environment:
+      # KRaft 모드 활성화 (Zookeeper 제거)
+      KAFKA_ENABLE_KRAFT: "yes"
+
+      # ✅ 필수: 고유 노드 아이디
+      KAFKA_CFG_NODE_ID: 1
+
+      # KRaft(무주키퍼) 단일 노드 설정
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:${KAFKA_PORT:-9092},CONTROLLER://:9093
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://localhost:${KAFKA_PORT:-9092}
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+
+      # 개발 편의
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1     # ✅ 추가
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 1                 # ✅ 추가
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT            # ✅ 권장
+
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    volumes:
+      - ./volumes/kafka-data:/bitnami/kafka
+    restart: always
+
+  weaviate:
+    image: semitechnologies/weaviate:${WEAVIATE_VERSION:-latest}
+    container_name: weaviate
+    hostname: weaviate
+    ports:
+      - "${WEAVIATE_PORT_HTTP:-8080}:8080"
+      - "${WEAVIATE_PORT_GRPC:-50051}:50051"
+    env_file:
+      - .env
+    environment:
+      QUERY_DEFAULTS_LIMIT: ${WEAVIATE_QUERY_DEFAULTS_LIMIT:-25}
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "${WEAVIATE_AUTH_ANON:-true}"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      ENABLE_MODULES: text2vec-openai
+      ENABLE_API_BASED_MODULES: "${WEAVIATE_ENABLE_API_BASED_MODULES:-true}"
+      DEFAULT_VECTORIZER_MODULE: text2vec-openai
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      CLUSTER_HOSTNAME: weaviate
+    volumes:
+      - ./volumes/weaviate/data:/var/lib/weaviate
+    restart: always
+
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION:-latest}
+    container_name: grafana
+    ports:
+      - "${GRAFANA_PORT:-3030}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER:-admin}       # 기본 계정 (첫 로그인 후 꼭 바꿔!)
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-change-me}
+      GF_USERS_DEFAULT_THEME: ${GF_DEFAULT_THEME:-dark}       # 다크테마 + 서울 타임존
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: ${GF_TIMEZONE:-Asia/Seoul}
+    volumes:
+      - ./volumes/grafana/data:/var/lib/grafana    # 데이터 영속화
+      - ./volumes/grafana/provisioning:/etc/grafana/provisioning
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:${MINIO_VERSION:-latest}
+    container_name: minio
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT:-9001}"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me}
+      MINIO_SERVER_URL: http://localhost:${MINIO_API_PORT:-9000}
+      MINIO_BROWSER_REDIRECT_URL: http://localhost:${MINIO_CONSOLE_PORT:-9001}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"   # S3 API
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"   # 콘솔(UI)
+    volumes:
+      - ./volumes/minio/data:/data
+      - ./volumes/minio/config:/root/.minio
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/ready" ]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+    networks: [ minio_net ]
+
+  minio-init:
+    image: minio/mc:${MINIO_MC_VERSION:-latest}
+    container_name: minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-change-me}@minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:-talkie-documents}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    entrypoint: [ "/bin/sh", "-c" ]
+    command: >
+      sh -c '
+        set -euo pipefail
+        echo "[minio-init] alias OK: $${MC_HOST_local}"
+
+        # 버킷 생성 (이미 있으면 무시)
+        mc mb --ignore-existing local/$${MINIO_BUCKET}
+
+        # 기본 권한 private으로 설정
+        mc anonymous set none local/$${MINIO_BUCKET}
+
+        # CORS 정책 적용
+        cat > /tmp/cors.json <<EOF
+        [
+          {
+            "AllowedOrigins": ["$${CORS_ORIGINS}"],
+            "AllowedMethods": ["GET","HEAD","PUT","POST"],
+            "AllowedHeaders": ["*"],
+            "ExposeHeaders": ["ETag","x-amz-request-id","x-amz-id-2","Date"],
+            "MaxAgeSeconds": 86400
+          }
+        ]
+        EOF
+
+        mc cors set local/$${MINIO_BUCKET} /tmp/cors.json
+        mc anonymous get local/$${MINIO_BUCKET} || echo "CORS set OK ✅"
+        echo "[minio-init] done ✅"
+      '
+    networks: [ minio_net ]
+
+networks:
+  minio_net:
+    driver: bridge
