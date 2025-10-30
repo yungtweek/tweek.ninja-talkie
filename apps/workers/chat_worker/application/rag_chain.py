@@ -17,11 +17,13 @@ logger = getLogger("RagPipeline")
 
 class RagPipeline:
     """
-    Class-based RAG pipeline:
-     - Encapsulates env/config
-     - Manages Weaviate client, embeddings
-     - Provides retriever construction, compression, join_context
-     - Exposes .chain(llm) -> Runnable for worker
+    Class-based RAG pipeline (LangChain 1.x + Weaviate 1.x)
+      - Keeps env/config (Weaviate client, embeddings, LLM)
+      - Builds a retriever per request (stateless chain)
+      - Uses Weaviate Collections API for BM25 / hybrid
+      - Uses LangChain VectorStore for similarity / mmr
+      - Compressor conforms to LC 1.x (DocumentCompressorPipeline.compress_documents)
+      - Fallback order: similarity → (no filters) → BM25 → MMR
     """
     # Guarded imports for LC 1.x vs older variants
     try:
@@ -77,6 +79,7 @@ class RagPipeline:
         )
 
     # ---------------- Filters / Compression / Utils ----------------
+    # Normalize app-level filters to Weaviate Collections 'where' format
     @staticmethod
     def normalize_filters(filters: Dict[str, Any] | None):
         if not filters:
@@ -93,7 +96,7 @@ class RagPipeline:
                     else:
                         sub.append({
                             "path": [k],
-                            "operator": "TextContains",  # ✅ 부분 일치 + 대소문자 무시
+                            "operator": "TextContains",  # Case-insensitive partial match (TextContains)
                             "valueText": str(item).lower(),
                         })
                 ops.append({"operator": "Or", "operands": sub})
@@ -104,24 +107,38 @@ class RagPipeline:
             else:
                 ops.append({
                     "path": [k],
-                    "operator": "TextContains",  # ✅ 문자열 일치 대신 contains
+                    "operator": "TextContains",  # Case-insensitive partial match (TextContains)
                     "valueText": str(v).lower(),
                 })
         return {"operator": "And", "operands": ops} if len(ops) > 1 else (ops[0] if ops else None)
 
     def compress_docs(self, docs: List, query: str):
-        """Use LC compressor if available; otherwise trim by char budget."""
+        """Document compression for LC 1.x. Use DocumentCompressorPipeline.compress_documents(); fallback to simple context budget trim if compressor yields nothing or fails."""
         DC, EF = self.DocumentCompressorPipeline, self.EmbeddingsFilter
         if DC and EF:
             try:
-                compressor = DC(transformers=[EF(embeddings=self.embeddings, similarity_threshold=0.35)])
-                return compressor.compress_documents(docs, query=query)
-            except Exception:
-                pass
-        # Fallback: simple budget trim
+                compressor = DC(
+                    transformers=[
+                        EF(
+                            embeddings=self.embeddings,
+                            similarity_threshold=0.2  # tune if needed
+                        )
+                    ]
+                )
+                # LC 1.x: use compressor.compress_documents(documents, query)
+                # (async alternative would be compressor.acompress_documents(...))
+                result = compressor.compress_documents(docs, query)
+                if not result:
+                    logger.warning("[RAG] compressor returned no docs (filtered out everything).")
+                    return docs  # fallback: keep original
+                logger.info(f"[RAG] compressed docs count={len(result)}")
+                return result
+            except Exception as e:
+                logger.warning(f"[RAG] compressor failed: {e}")
+        # Fallback: simple budget trim (no compressor)
         kept, total = [], 0
         for d in docs:
-            ln = len(d.page_content or "")
+            ln = len(getattr(d, "page_content", "") or "")
             if total + ln > self.max_context:
                 continue
             kept.append(d)
@@ -129,6 +146,7 @@ class RagPipeline:
         return kept or docs[: min(len(docs), 6)]
 
     def join_context(self, docs: List) -> str:
+        # Log top-5 doc meta for quick debugging (safe even when docs is empty)
         try:
             print("[RAG] top docs meta:", [
                 (getattr(d, "id", None), (d.metadata or {})) for d in docs[:5]
@@ -143,9 +161,9 @@ class RagPipeline:
             meta = d.metadata or {}
             title = (
                     meta.get("title")
-                    or meta.get("filename")    # ✅ 우리 스키마
-                    or meta.get("file_name")   # 혹시 다른 파이프라인
-                    or meta.get("source")      # 종종 쓰는 키
+                    or meta.get("filename")    # our schema key
+                    or meta.get("file_name")   # other pipeline key (fallback)
+                    or meta.get("source")      # common alt key
                     or "Untitled"
             )
             section = meta.get("section") or ""
@@ -165,7 +183,7 @@ class RagPipeline:
             if client is None or not hasattr(client, "collections"):
                 raise ValueError("Weaviate >=1.0 Collections API required for BM25")
             coll = client.collections.get(self.pipe.collection)
-            # Perform BM25 keyword search
+            # Weaviate Collections API: BM25 keyword search
             res = coll.query.bm25(
                 query=query,
                 limit=self.k,
@@ -201,7 +219,7 @@ class RagPipeline:
             if client is None or not hasattr(client, "collections"):
                 raise ValueError("Weaviate >=1.0 Collections API required for hybrid")
             coll = client.collections.get(self.pipe.collection)
-            # Perform native hybrid search (vector + keyword)
+            # Weaviate Collections API: native hybrid (vector + keyword)
             res = coll.query.hybrid(
                 query=query,
                 alpha=self.alpha,
@@ -235,9 +253,13 @@ class RagPipeline:
         # Compute effective search type and search kwargs
         st = (search_type or self.search_type or "similarity").lower()
         # Supported modes:
-        # - "similarity"/"mmr": VectorStoreRetriever
-        # - "hybrid": native hybrid via Collections API
-        # - "bm25": pure keyword via Collections API
+        #   - "similarity": VectorStoreRetriever (WeaviateVectorStore)
+        #   - "mmr":        VectorStoreRetriever with MMR
+        #   - "hybrid":     Collections API (vector + BM25)
+        #   - "bm25":       Collections API (keyword only)
+        # Notes:
+        #   * score_threshold is only respected by "similarity_score_threshold"
+        #     (switch search_type if you want a hard cutoff)
         if st == "bm25":
             return self._BM25Retriever(self, top_k=int(top_k or self.default_top_k), filters=filters, text_key=(text_key or self.text_key))
         if st == "hybrid":
@@ -252,11 +274,14 @@ class RagPipeline:
             index_name=self.collection,
             text_key=(text_key or self.text_key),
             embedding=self.embeddings,
-            attributes=["filename", "page", "chunk_index", "user_id", "file_id", "chunk_id"],  # ✅ 추가
+            attributes=["filename", "page", "chunk_index", "user_id", "file_id", "chunk_id"],  # attributes returned with each doc
         )
         retriever = vs.as_retriever(
             search_type=st if st in ("similarity", "mmr") else "similarity",
             search_kwargs=kwargs,
+            # To enable a hard relevance cutoff, switch to:
+            #   search_type="similarity_score_threshold",
+            #   search_kwargs={**kwargs, "score_threshold": 0.6},
         )
         # Multi-query expansion if available
         if (mmq or self.default_mmq) and self.MultiQueryRetriever is not None:
@@ -301,6 +326,7 @@ class RagPipeline:
                 alpha=rag_cfg.get("alpha"),
             )
             q = inputs["question"]
+            # Build a fresh retriever for this request and run the initial similarity search
             try:
                 try:
                     logger.info(f"[RAG] cfg topK={rag_cfg.get('topK')} mmq={rag_cfg.get('mmq')} filters={rag_cfg.get('filters')}")
@@ -309,6 +335,7 @@ class RagPipeline:
                 docs = retriever.invoke(q)
                 # Fallbacks: if nothing returned, retry without filters, then BM25, then MMR
                 if not docs:
+                    # 1) Retry without filters (overly restrictive filters often cause empty hits)
                     try:
                         logger.info("[RAG] no docs with current filters; retrying without filters")
                     except Exception:
@@ -323,6 +350,7 @@ class RagPipeline:
                     )
                     docs = retriever_nf.invoke(q)
                 if not docs:
+                    # 2) BM25 as a safety net for keyword matches
                     try:
                         logger.info("[RAG] still no docs; retrying with BM25 (hybrid alpha=0.0)")
                     except Exception:
@@ -340,6 +368,7 @@ class RagPipeline:
                     except Exception:
                         docs = []
                 if not docs:
+                    # 3) MMR for diversity when vector search returns neighbors with low scores
                     try:
                         logger.info("[RAG] still no docs; retrying with MMR")
                     except Exception:

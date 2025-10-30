@@ -121,7 +121,7 @@ async def main():
     system_prompt = "You are Talkie, an assistant that answers briefly."
     history_service = HistoryService(history_repo, system_prompt, settings.MAX_CTX_TOKENS, settings.MAX_HISTORY_TURNS)
     weaviate_client = await get_client()
-    embeddings = OpenAIEmbeddings()
+    embeddings = OpenAIEmbeddings(model=settings.EMBEDDING_MODEL)
     pipeline = RagPipeline(
         settings=settings.RAG,  # ← inject sub-config explicitly
         llm=llm,                    # ← reuse a single LLM instance per worker
