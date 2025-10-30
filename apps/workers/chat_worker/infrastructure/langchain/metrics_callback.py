@@ -143,6 +143,15 @@ class MetricsCallback(AsyncCallbackHandler):
             logger.warning("metrics persist failed: %s", e)
 
     # -------- LLM lifecycle hooks --------
+    def on_chat_model_start(
+            self,
+            *args,
+            **kwargs: Any,
+    ):
+        # LangChain 0.2+ emits this event when an LLM starts
+        # We don't need to do anything special here, just silence the warning
+        pass
+
     async def on_llm_start(
             self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any
     ) -> None:

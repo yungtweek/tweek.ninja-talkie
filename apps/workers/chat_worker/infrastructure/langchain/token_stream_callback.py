@@ -1,6 +1,11 @@
 import asyncio
 from logging import getLogger
+from typing import Any, Optional
+from uuid import UUID
+
 from langchain_core.callbacks import AsyncCallbackHandler
+from langchain_core.messages import BaseMessage
+
 from chat_worker.infrastructure.stream.stream_service import safe_publish
 
 log = getLogger(__name__)
@@ -26,6 +31,15 @@ class TokenStreamCallback(AsyncCallbackHandler):
         self._loop = asyncio.get_running_loop()
 
         # Ensure safe cross-thread invocation from llama.cpp callbacks
+
+    def on_chat_model_start(
+            self,
+            *args,
+            **kwargs: Any,
+    ):
+        # LangChain 0.2+ emits this event when an LLM starts
+        # We don't need to do anything special here, just silence the warning
+        pass
 
 
     def on_llm_new_token(self, token: str, **kwargs):
