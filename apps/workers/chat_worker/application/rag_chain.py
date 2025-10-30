@@ -33,6 +33,7 @@ class RagPipeline:
         from langchain.retrievers.multi_query import MultiQueryRetriever  # type: ignore
     except Exception:
         MultiQueryRetriever = None  # type: ignore
+    WeaviateHybridSearchRetriever = None  # deprecated / unsupported on Weaviate >=1.0
 
     def __init__(
         self,
@@ -152,8 +153,79 @@ class RagPipeline:
             total += len(txt)
         return "\n---\n".join(buf)
 
+    class _BM25Retriever:
+        def __init__(self, pipe: "RagPipeline", *, top_k: int, filters: Dict[str, Any] | None, text_key: str):
+            self.pipe = pipe
+            self.k = int(top_k or pipe.default_top_k)
+            self.filters = pipe.normalize_filters(filters)
+            self.text_key = text_key or pipe.text_key
+
+        def invoke(self, query: str):
+            client = self.pipe.client
+            if client is None or not hasattr(client, "collections"):
+                raise ValueError("Weaviate >=1.0 Collections API required for BM25")
+            coll = client.collections.get(self.pipe.collection)
+            # Perform BM25 keyword search
+            res = coll.query.bm25(
+                query=query,
+                limit=self.k,
+                filters=self.filters,
+                return_properties=["filename", "page", "chunk_index", "user_id", "file_id", "chunk_id", self.text_key],
+            )
+            items = getattr(res, "objects", None) or getattr(res, "data", None) or []
+            docs = []
+            for it in items:
+                props = getattr(it, "properties", None) or getattr(it, "properties", {}) or {}
+                text = props.get(self.text_key) or ""
+                meta = {k: v for k, v in props.items() if k != self.text_key}
+                # try to attach id if available
+                _id = getattr(it, "uuid", None) or getattr(it, "id", None)
+                doc = type("Doc", (), {})()
+                doc.page_content = text
+                doc.metadata = meta
+                if _id:
+                    setattr(doc, "id", _id)
+                docs.append(doc)
+            return docs
+
+    class _HybridRetriever:
+        def __init__(self, pipe: "RagPipeline", *, alpha: float, top_k: int, filters: Dict[str, Any] | None, text_key: str):
+            self.pipe = pipe
+            self.alpha = float(alpha)
+            self.k = int(top_k or pipe.default_top_k)
+            self.filters = pipe.normalize_filters(filters)
+            self.text_key = text_key or pipe.text_key
+
+        def invoke(self, query: str):
+            client = self.pipe.client
+            if client is None or not hasattr(client, "collections"):
+                raise ValueError("Weaviate >=1.0 Collections API required for hybrid")
+            coll = client.collections.get(self.pipe.collection)
+            # Perform native hybrid search (vector + keyword)
+            res = coll.query.hybrid(
+                query=query,
+                alpha=self.alpha,
+                limit=self.k,
+                filters=self.filters,
+                return_properties=["filename", "page", "chunk_index", "user_id", "file_id", "chunk_id", self.text_key],
+            )
+            items = getattr(res, "objects", None) or getattr(res, "data", None) or []
+            docs = []
+            for it in items:
+                props = getattr(it, "properties", None) or {}
+                text = props.get(self.text_key) or ""
+                meta = {k: v for k, v in props.items() if k != self.text_key}
+                _id = getattr(it, "uuid", None) or getattr(it, "id", None)
+                doc = type("Doc", (), {})()
+                doc.page_content = text
+                doc.metadata = meta
+                if _id:
+                    setattr(doc, "id", _id)
+                docs.append(doc)
+            return docs
+
     # ---------------- Retriever / Chain ----------------
-    def build_retriever(self, *, top_k: int | None = None, mmq: int | None = None, filters: Dict[str, Any] | None = None, llm: Optional[BaseLanguageModel] = None, text_key: Optional[str] = None, search_type: Optional[str] = None):
+    def build_retriever(self, *, top_k: int | None = None, mmq: int | None = None, filters: Dict[str, Any] | None = None, llm: Optional[BaseLanguageModel] = None, text_key: Optional[str] = None, search_type: Optional[str] = None, alpha: Optional[float] = None):
         if self.client is None:
             raise ValueError("Weaviate client must be injected: RagPipeline(client=...)")
         if self.embeddings is None:
@@ -162,14 +234,15 @@ class RagPipeline:
         filters = self.normalize_filters(filters)
         # Compute effective search type and search kwargs
         st = (search_type or self.search_type or "similarity").lower()
-        # LangChain VectorStoreRetriever for Weaviate does not accept 'hybrid' here.
-        # Supported: ('similarity', 'similarity_score_threshold', 'mmr')
+        # Supported modes:
+        # - "similarity"/"mmr": VectorStoreRetriever
+        # - "hybrid": native hybrid via Collections API
+        # - "bm25": pure keyword via Collections API
+        if st == "bm25":
+            return self._BM25Retriever(self, top_k=int(top_k or self.default_top_k), filters=filters, text_key=(text_key or self.text_key))
         if st == "hybrid":
-            try:
-                logger.warning("[RAG] 'hybrid' search_type not supported by VectorStoreRetriever; falling back to 'mmr'")
-            except Exception:
-                pass
-            st = "mmr"
+            a = float(alpha if alpha is not None else 0.5)
+            return self._HybridRetriever(self, alpha=a, top_k=int(top_k or self.default_top_k), filters=filters, text_key=(text_key or self.text_key))
         kwargs: Dict[str, Any] = {"k": int(top_k or self.default_top_k)}
         if filters:
             kwargs["filters"] = filters
@@ -182,7 +255,7 @@ class RagPipeline:
             attributes=["filename", "page", "chunk_index", "user_id", "file_id", "chunk_id"],  # ✅ 추가
         )
         retriever = vs.as_retriever(
-            search_type=st if st in ("similarity", "hybrid") else "similarity",
+            search_type=st if st in ("similarity", "mmr") else "similarity",
             search_kwargs=kwargs,
         )
         # Multi-query expansion if available
@@ -224,6 +297,8 @@ class RagPipeline:
                 mmq=rag_cfg.get("mmq"),
                 filters=rag_cfg.get("filters"),
                 llm=used_llm,
+                search_type=rag_cfg.get("searchType"),
+                alpha=rag_cfg.get("alpha"),
             )
             q = inputs["question"]
             try:
@@ -232,7 +307,7 @@ class RagPipeline:
                 except Exception:
                     pass
                 docs = retriever.invoke(q)
-                # Fallbacks: if nothing returned, retry without filters, then hybrid
+                # Fallbacks: if nothing returned, retry without filters, then BM25, then MMR
                 if not docs:
                     try:
                         logger.info("[RAG] no docs with current filters; retrying without filters")
@@ -243,28 +318,42 @@ class RagPipeline:
                         mmq=rag_cfg.get("mmq"),
                         filters=None,
                         llm=used_llm,
+                        search_type=rag_cfg.get("searchType"),
+                        alpha=rag_cfg.get("alpha"),
                     )
                     docs = retriever_nf.invoke(q)
-                if not docs and (self.search_type or "similarity") != "hybrid":
+                if not docs:
                     try:
-                        try:
-                            logger.info("[RAG] still no docs; retrying with mmr search_type (hybrid not supported)")
-                        except Exception:
-                            pass
-                        retriever_hy = self.build_retriever(
+                        logger.info("[RAG] still no docs; retrying with BM25 (hybrid alpha=0.0)")
+                    except Exception:
+                        pass
+                    try:
+                        retriever_bm25 = self.build_retriever(
+                            top_k=rag_cfg.get("topK"),
+                            mmq=rag_cfg.get("mmq"),
+                            filters=None,
+                            llm=used_llm,
+                            search_type="bm25",
+                            alpha=0.0,
+                        )
+                        docs = retriever_bm25.invoke(q)
+                    except Exception:
+                        docs = []
+                if not docs:
+                    try:
+                        logger.info("[RAG] still no docs; retrying with MMR")
+                    except Exception:
+                        pass
+                    try:
+                        retriever_mmr = self.build_retriever(
                             top_k=rag_cfg.get("topK"),
                             mmq=rag_cfg.get("mmq"),
                             filters=None,
                             llm=used_llm,
                             search_type="mmr",
                         )
-                        docs = retriever_hy.invoke(q)
-                    except Exception as e:
-                        try:
-                            logger.warning(f"[RAG] hybrid retry failed: {getattr(e, 'message', str(e))}")
-                        except Exception:
-                            pass
-                        # Keep docs as empty so the downstream 'no docs' fallback triggers
+                        docs = retriever_mmr.invoke(q)
+                    except Exception:
                         docs = []
             except KeyError as e:
                 # Handle missing text_key in collection (e.g., 'content' vs 'text'/'page_content')
