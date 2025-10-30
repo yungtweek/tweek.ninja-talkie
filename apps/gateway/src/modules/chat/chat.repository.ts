@@ -6,25 +6,14 @@
  */
 // src/modules/users/users.repository.ts
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ChatMessageZod, ChatSessionsZod } from '@tweek/types-zod';
+import { ChatMessageZod, ChatSessionZod } from '@tweek/types-zod';
 import { Pool } from 'pg';
 import { PG_POOL } from '@/modules/infra/database/database.module';
-
-/** Shape of a message row selected for GraphQL consumption. */
-export interface ChatMessageRow {
-  id: string;
-  role: 'user' | 'assistant';
-  mode: 'gen' | 'rag';
-  content: string;
-  turn: number;
-  messageIndex: number;
-  sourcesJson?: string | null;
-}
-const logger = new Logger('ChatRepository');
 
 /** Data access layer for chat-related entities (sessions, messages, jobs, outbox). */
 @Injectable()
 export class ChatRepository {
+  private readonly logger = new Logger(ChatRepository.name);
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
   /**
@@ -37,8 +26,12 @@ export class ChatRepository {
     // Insert and return generated session id
     const sql = `INSERT INTO chat_sessions (user_id, title)
                VALUES ($1, $2) RETURNING id`;
-    const { rows } = await this.pool.query(sql, [userId, title ?? null]);
-    return rows[0].id as string;
+    const { rows } = await this.pool.query<{ id: string }>(sql, [userId, title ?? null]);
+    if (rows.length === 0) {
+      // Should never happen, but keep repository safe for callers
+      throw new Error('createSession: INSERT returned no id');
+    }
+    return rows[0].id;
   }
 
   /** Quick ownership existence check for (sessionId, userId) pair. */
@@ -71,18 +64,24 @@ export class ChatRepository {
       await client.query(`SELECT id FROM chat_sessions WHERE id=$1 FOR UPDATE`, [sessionId]);
 
       // Compute next counters safely under the lock
-      const { rows: indexRows } = await client.query(
+      const { rows: indexRows } = await client.query<{ next_index: number }>(
         `SELECT COALESCE(MAX(message_index), 0) + 1 AS next_index FROM chat_messages WHERE session_id=$1;`,
         [sessionId],
       );
-      const nextIndex = indexRows[0].next_index as number;
+      if (indexRows.length === 0 || typeof indexRows[0]?.next_index !== 'number') {
+        return Promise.reject(new Error('createUserMessage: failed to compute next_index'));
+      }
+      const nextIndex: number = indexRows[0].next_index;
 
       // Compute next counters safely under the lock
-      const { rows: turnRows } = await client.query(
+      const { rows: turnRows } = await client.query<{ next_turn: number }>(
         `SELECT COALESCE(MAX(turn), 0) + 1 AS next_turn FROM chat_messages WHERE session_id=$1;`,
         [sessionId],
       );
-      const nextTurn = turnRows[0].next_turn as number;
+      if (turnRows.length === 0 || typeof turnRows[0]?.next_turn !== 'number') {
+        return Promise.reject(new Error('createUserMessage: failed to compute next_turn'));
+      }
+      const nextTurn: number = turnRows[0].next_turn;
 
       // Persist the new message and return counters
       const insertSql = `
@@ -152,20 +151,20 @@ export class ChatRepository {
   }
 
   /**
-   * Paginated messages for a session (ownership enforced via JOIN on user_id).
+   * Paginated messages for a session.
+   * - Caller must ensure ownership before calling this method.
    * - Supports `before` (message_index) keyset pagination.
    * - Returns rows in ascending order (oldest→newest) for UI convenience.
    */
   async listMessagesBySession(
-    userId: string,
     sessionId: string,
     opts: { first: number; before?: number },
   ): Promise<ChatMessageZod[]> {
     // Clamp page size to [1, 100]
     const limit = Math.min(Math.max(opts.first ?? 20, 1), 100);
-    const params: (string | number)[] = [userId, sessionId];
+    const params: (string | number)[] = [sessionId];
     let idx = 3;
-    // Restrict to caller's user_id via join; prevents cross-tenant reads
+    // Ownership is validated by the caller (chatSession resolver). No user_id join here to keep this hot path fast.
     let sql = `
       SELECT cm.id,
              cm.role,
@@ -174,8 +173,8 @@ export class ChatRepository {
              cm.message_index as "messageIndex",
              cm.sources_json as "sourcesJson"
       FROM chat_messages cm
-      JOIN chat_sessions cs ON cs.id = cm.session_id AND cs.user_id = $1
-      WHERE cm.session_id = $2
+      JOIN chat_sessions cs ON cs.id = cm.session_id
+      WHERE cm.session_id = $1
     `;
 
     // Apply cursor (exclusive) if provided
@@ -198,7 +197,7 @@ export class ChatRepository {
   async listSessionsByUser(
     userId: string,
     opts: { first?: number; after?: string },
-  ): Promise<ChatSessionsZod[]> {
+  ): Promise<ChatSessionZod[]> {
     // Decode after-cursor: base64("<iso>|<uuid>")
     let afterTs: Date | undefined;
     let afterId: string | undefined;
@@ -254,8 +253,7 @@ export class ChatRepository {
     }
 
     // Return raw rows; caller (resolver) may further map/shape
-    const { rows } = await this.pool.query<ChatSessionsZod>(sql, params);
-    // new Logger('ChatRepository').debug(rows);
+    const { rows } = await this.pool.query<ChatSessionZod>(sql, params);
 
     return rows;
   }
@@ -265,6 +263,40 @@ export class ChatRepository {
     const sql = 'SELECT user_id FROM chat_sessions WHERE id = $1 LIMIT 1';
     const { rows } = await this.pool.query<{ user_id: string }>(sql, [sessionId]);
     return rows[0]?.user_id ?? null;
+  }
+
+  /** Get full session meta for validation and GraphQL hydration. */
+  async getSessionMeta(sessionId: string): Promise<{
+    userId: string;
+    title: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null> {
+    const sql = `
+    SELECT user_id AS "userId",
+           title,
+           created_at AS "createdAt",
+           updated_at AS "updatedAt"
+      FROM chat_sessions
+     WHERE id = $1
+     LIMIT 1
+  `;
+    const { rows } = await this.pool.query<{
+      userId: string;
+      title: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+    }>(sql, [sessionId]);
+
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    // Normalize to the exact return shape and avoid `any` escapes
+    return {
+      userId: r.userId,
+      title: r.title,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    };
   }
 
   /** Mark session as logically deleting; background worker will finalize. */
@@ -279,8 +311,12 @@ export class ChatRepository {
     try {
       // Best-effort update; errors are logged and rethrown for upstream handling
       await this.pool.query(sql, [sessionId]);
-    } catch (e: any) {
-      logger.error(`markSessionDeleting failed: ${e?.message}`, e?.stack);
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        this.logger.error(`markSessionDeleting failed: ${e.message}`, e.stack);
+      } else {
+        this.logger.error(`markSessionDeleting failed: ${String(e)}`);
+      }
       throw e;
     }
   }

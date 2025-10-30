@@ -1,7 +1,7 @@
-// apps/gateway/src/graphql/resolvers/chat.resolver.ts
+// apps/gateway/src/modules/chat/gql/chat.resolver.ts
 import { Args, ID, Int, Parent, Query, ResolveField, Resolver } from '@nestjs/graphql';
 import { ChatRepository } from '@/modules/chat/chat.repository';
-import { Message, MessageConnection, MessageEdge, ChatHistory, ChatSession } from './chat.type';
+import { Message, MessageConnection, MessageEdge, ChatSession } from './chat.type';
 import { toCursor, fromCursor } from '../../infra/graphql/utils/cursor';
 import { z } from 'zod';
 import { ForbiddenException, Injectable, NotFoundException, UseGuards } from '@nestjs/common';
@@ -10,37 +10,40 @@ import { CurrentUser } from '@/modules/auth/current-user.decorator';
 import { ChatMessageZ } from '@tweek/types-zod';
 import { PageInfo } from '@/modules/infra/graphql/types/page-info.type';
 
-@Resolver(() => ChatHistory)
+@Resolver(() => ChatSession)
 @Injectable()
 @UseGuards(JwtAuthGuard)
 /**
  * ChatResolver
- * - Handles chat history queries per session.
- * - Performs ownership validation and paginated message retrieval.
+ * - Serves ChatSession queries and paginated message retrieval.
+ * - Performs ownership validation for protected access.
  * - Authenticated via JwtAuthGuard.
  */
 export class ChatResolver {
   constructor(private readonly chatRepository: ChatRepository) {}
 
   /**
-   * Entry point query that initializes ChatHistory object by session ID.
-   * Returns a lightweight ChatHistory wrapper containing the target session.
+   * Query: chatSession
+   * - Returns a hydrated ChatSession node by ID after validating ownership.
+   * - The messages field is resolved separately (cursor-based).
    */
-  @Query(() => ChatHistory)
-  chatHistory(@Args('id', { type: () => ID }) id: string): ChatHistory {
-    return {
-      session: { id } as ChatSession,
-    } as ChatHistory;
-  }
+  @Query(() => ChatSession)
+  async chatSession(
+    @Args('id', { type: () => ID }) id: string,
+    @CurrentUser() user: { sub: string },
+  ): Promise<ChatSession> {
+    // Load session meta and validate ownership
+    const meta = await this.chatRepository.getSessionMeta(id);
+    if (!meta) throw new NotFoundException('Session not found');
+    if (meta.userId !== user.sub) throw new ForbiddenException('Not your session');
 
-  /**
-   * ResolveField: session
-   * - Ensures the parent ChatHistory contains a valid ChatSession reference.
-   */
-  @ResolveField(() => ChatSession)
-  session(@Parent() parent: ChatHistory): ChatSession {
-    // parent.session may already be present; ensure it includes at least the id
-    return parent.session;
+    // Return hydrated ChatSession (messages are resolved via ResolveField)
+    return {
+      id,
+      title: meta.title ?? null,
+      createdAt: meta.createdAt,
+      updatedAt: meta.updatedAt,
+    } as ChatSession;
   }
 
   /**
@@ -53,25 +56,19 @@ export class ChatResolver {
    *   - Uses `before` cursor and `first` limit for fetching messages.
    *
    * Ownership:
-   *   - getUserId(sessionId) → verifies session owner matches current user.
+   *   - getUserId(sessionId) → verifies session owner matches the current user.
    */
   @ResolveField(() => MessageConnection)
   async messages(
-    @Parent() parent: ChatHistory,
-    @CurrentUser() user: { sub: string },
+    @Parent() parent: ChatSession,
     @Args('first', { type: () => Int, nullable: true }) first?: number,
     @Args('before', { nullable: true }) before?: string,
   ): Promise<MessageConnection> {
-    // Extract current user ID from JWT payload
-    const userId = user.sub;
     const beforeIdx = fromCursor(before);
-    const sessionId = parent.session.id;
-    // Verify that the current user owns the requested chat session
-    const ownerId = await this.chatRepository.getUserId(sessionId);
-    if (!ownerId) throw new NotFoundException('Session not found');
-    if (ownerId !== userId) throw new ForbiddenException('You do not own this file');
+    const sessionId = parent.id;
+
     // Retrieve messages for the session with pagination options
-    const rawRows = await this.chatRepository.listMessagesBySession(userId, sessionId, {
+    const rawRows = await this.chatRepository.listMessagesBySession(sessionId, {
       first: first ?? 50,
       before: beforeIdx,
     });
@@ -102,9 +99,12 @@ export class ChatResolver {
     return {
       edges,
       pageInfo: {
-        hasPreviousPage: edges.length > 0,
-        startCursor: edges[0]?.cursor,
-        endCursor: edges[edges.length - 1]?.cursor,
+        // Previous page exists if a `before` cursor was provided
+        hasPreviousPage: Boolean(before),
+        // Next page is conservatively inferred from the page size
+        hasNextPage: edges.length >= (first ?? 50),
+        startCursor: edges[0]?.cursor ?? null,
+        endCursor: edges[edges.length - 1]?.cursor ?? null,
       } as PageInfo,
     };
   }

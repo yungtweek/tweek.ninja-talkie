@@ -2,23 +2,23 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
-type ChatHistory {
-  messages(before: String, first: Int): MessageConnection!
-  session: ChatSession!
-}
-
 type ChatSession {
-  id: ID!
-  messages: MessageConnection!
-}
-
-type ChatSessions {
-  createdAt: DateTime!
+  createdAt: DateTime
   id: ID!
   lastMessageAt: DateTime
   lastMessagePreview: String
+  messages(before: String, first: Int): MessageConnection!
   title: String
-  updatedAt: DateTime!
+  updatedAt: DateTime
+}
+
+type ChatSessionConnection {
+  edges: [ChatSessionEdge!]!
+  pageInfo: PageInfo!
+}
+
+type ChatSessionEdge {
+  node: ChatSession!
 }
 
 """
@@ -144,8 +144,8 @@ type PageInfo {
 }
 
 type Query {
-  chatHistory(id: ID!): ChatHistory!
-  chatSessions(after: String, first: Int): [ChatSessions!]!
+  chatSession(id: ID!): ChatSession!
+  chatSessionList(after: String, first: Int): ChatSessionConnection!
 
   """List files"""
   files(after: String, first: Int!): FileConnection!
