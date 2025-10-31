@@ -127,12 +127,7 @@ class RagPipeline:
                 )
                 # LC 1.x: use compressor.compress_documents(documents, query)
                 # (async alternative would be compressor.acompress_documents(...))
-                result = compressor.compress_documents(docs, query)
-                if not result:
-                    logger.warning("[RAG] compressor returned no docs (filtered out everything).")
-                    return docs  # fallback: keep original
-                logger.info(f"[RAG] compressed docs count={len(result)}")
-                return result
+                return compressor.compress_documents(docs, query)
             except Exception as e:
                 logger.warning(f"[RAG] compressor failed: {e}")
         # Fallback: simple budget trim (no compressor)
@@ -408,14 +403,15 @@ class RagPipeline:
                         continue
                 else:
                     raise last_err
-            if not docs:
+            compressed_docs = self.compress_docs(docs, q)
+            if not compressed_docs:
                 logger.warning("[RAG] No relevant documents found for query.")
                 return {
                     "question": q,
                     "context": "⚠️ 관련 정보를 찾지 못했습니다. 질문에 대한 일반적인 답변을 제공합니다.",
                 }
 
-            context = self.join_context(self.compress_docs(docs, q))
+            context = self.join_context(compressed_docs)
             return {"question": q, "context": context}
 
         return (
