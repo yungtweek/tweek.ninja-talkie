@@ -53,7 +53,7 @@
 ## 📂 디렉터리 구조 (요약)
 
 ```
-tweek.ninja/
+talkie/
  ├─ apps/
  │   ├─ gateway/            # NestJS GraphQL Gateway
  │   ├─ web/                # Next.js Web App
@@ -111,7 +111,7 @@ tweek.ninja/
 
 # 🌐 English Summary
 
-> **tweek.ninja — AI AGENT STARTER KIT FOR DUMMIES**  
+> **Talkie🤔 — AI AGENT STARTER KIT FOR DUMMIES**  
 > An evolving LLM‑based RAG / AI Agent portfolio project.  
 > The architecture is organized into **Gateway ↔ Worker ↔ Infra**, each operating as an independent service.  
 > Development and documentation are still ongoing.
@@ -199,7 +199,7 @@ graph LR
 
 # 🇯🇵 日本語サマリー
 
-> **🥷 tweek.ninja — バカたちのためのAIエージェントスターターキット**  
+> **🥷 Talkie🤔 — バカたちのためのAIエージェントスターターキット**  
 > LLMベースのRAG / AIエージェントポートフォリオプロジェクトです。  
 > 現在も開発・改良を続けており、構成は **Gateway ↔ Worker ↔ Infra** の3層構造になっています。  
 > それぞれのコンポーネントは独立したサービスとして動作します。
