@@ -6,7 +6,8 @@
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "rebootstrap": "rimraf node_modules 'apps/**/node_modules' 'packages/**/node_modules' .pnpm && pnpm store prune && pnpm install --force"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
@@ -19,6 +20,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^16.4.0",
     "typescript-eslint": "^8.46.2",
-    "prettier": "^3.4.2"
+    "prettier": "^3.4.2",
+    "rimraf": "^5.0.5"
   }
 }

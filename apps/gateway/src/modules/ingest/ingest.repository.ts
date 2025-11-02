@@ -343,6 +343,25 @@ export class IngestRepository {
     }
   }
 
+  /** Update visibility by file id (ownership is validated upstream). */
+  async updateVisibility(
+    file_id: string,
+    visibility: 'private' | 'department' | 'public' | 'followers',
+  ): Promise<void> {
+    const sql = `
+      UPDATE file_metadata
+         SET visibility = $2,
+             updated_at = now()
+       WHERE id = $1;
+    `;
+    try {
+      await this.pool.query(sql, [file_id, visibility]);
+    } catch (e: any) {
+      logger.error(`updateVisibility failed: ${e?.message}`, e?.stack);
+      throw e;
+    }
+  }
+
   /** Mark failed by (bucket, key) for clients that don't know file_id */
   async markFailedByKey(bucket: string, key: string, reason: string): Promise<void> {
     const sql = `

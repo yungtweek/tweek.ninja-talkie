@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Dict, Literal, cast
+from typing import Any, Dict, Literal, cast, Awaitable, Callable, Optional
 
 from ..use_cases.index_document import IndexDocumentUseCase, IndexDocumentCommand
 
@@ -9,6 +9,7 @@ class IndexRequestHandler:
     use_case: IndexDocumentUseCase
 
     async def handle(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+
         cmd = IndexDocumentCommand(
             user_id=payload["user_id"],
             file_id=payload["file_id"],

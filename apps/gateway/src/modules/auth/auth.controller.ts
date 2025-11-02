@@ -13,8 +13,8 @@ import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { RefreshJwtAuthGuard } from '@/modules/auth/jwt-refresh.guard';
 import { JwtAuthGuard } from '@/modules/auth/jwt.guard';
-import type { AuthViewZod, MeViewZod } from '@tweek/types-zod';
-import { MeViewZ } from '@tweek/types-zod';
+import type { AuthViewZod, MeViewZod } from '@talkie/types-zod';
+import { MeViewZ } from '@talkie/types-zod';
 import type { ZodType } from 'zod';
 
 /**

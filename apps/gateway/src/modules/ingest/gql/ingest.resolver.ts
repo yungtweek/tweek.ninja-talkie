@@ -20,33 +20,24 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { IngestService } from '@/modules/ingest/ingest.service';
-import { DeleteFilePayload, FileType } from '@/modules/ingest/gql/file.type';
-import { FileListType } from '@/modules/ingest/gql/file.type';
-import { FileMetadataInput } from '@/modules/ingest/gql/file.type';
+import {
+  DeleteFilePayload,
+  FileConnection,
+  FileType,
+  FileListType,
+  GqlFileStatus,
+  GqlFileVisibility,
+} from '@/modules/ingest/gql/file.type';
 import { JwtAuthGuard } from '@/modules/auth/jwt.guard';
 import { CurrentUser } from '@/modules/auth/current-user.decorator';
 import type { FileListItem } from '@/modules/ingest/ingest.repository';
 import { PUB_SUB } from '@/common/constants';
-import { PageInfo } from '@/modules/infra/graphql/types/page-info.type';
 import { decodeCursor, encodeCursor } from '@/modules/infra/graphql/utils/cursor';
-
-@ObjectType()
-class FileEdge {
-  @Field(() => FileListType)
-  node!: FileListType;
-  @Field(() => String, { nullable: true })
-  cursor?: string | null;
-}
-
-@ObjectType()
-class FileConnection {
-  @Field(() => [FileEdge])
-  edges!: FileEdge[];
-
-  @Field(() => PageInfo)
-  pageInfo!: PageInfo;
-}
-
+import { FileMetadataRegisterZ } from '@/modules/ingest/ingest.zod';
+import {
+  type FileStatus as FileStatusValue,
+  type FileVisibility as FileVisibilityValue,
+} from '@talkie/types-zod';
 /**
  * IngestResolver
  * - Handles file registration, listing, and deletion through GraphQL.
@@ -65,11 +56,11 @@ export class IngestResolver {
     return {
       id: r.id,
       filename: r.filename,
-      contentType: r.content_type ?? null,
-      size: r.size ?? null,
-      status: r.status as any,
-      visibility: r.visibility as any,
-      uploadedAt: r.uploaded_at ? new Date(r.uploaded_at) : null,
+      contentType: r.content_type as string,
+      size: r.size as number,
+      status: r.status as FileStatusValue,
+      visibility: r.visibility,
+      uploadedAt: new Date(r.uploaded_at as string),
       createdAt: new Date(r.created_at),
     };
   };
@@ -100,7 +91,7 @@ export class IngestResolver {
     }
 
     type FileCursor = {
-      uploadedAt: string | null;
+      uploadedAt: string;
       createdAt: string;
       id: string;
     };
@@ -132,8 +123,35 @@ export class IngestResolver {
    * - Used by clients to initialize upload URLs and metadata tracking.
    */
   @Mutation(() => FileType)
-  registerFile(@Args('input') input: FileMetadataInput) {
-    return this.ingestService.createPendingRecord(input);
+  registerFile(
+    @Args('bucket', { type: () => String }) bucket: string,
+    @Args('key', { type: () => String }) key: string,
+    @Args('filename', { type: () => String }) filename: string,
+    @Args('ownerId', { type: () => String }) ownerId: string,
+    @Args('contentType', { type: () => String }) contentType: string,
+    @Args('visibility', {
+      type: () => GqlFileVisibility,
+      nullable: true,
+      defaultValue: GqlFileVisibility.private,
+    })
+    visibility?: FileVisibilityValue,
+    @Args('status', {
+      type: () => GqlFileStatus,
+      nullable: true,
+      defaultValue: GqlFileStatus.pending,
+    })
+    status?: FileStatusValue,
+  ) {
+    const parsed = FileMetadataRegisterZ.parse({
+      bucket,
+      key,
+      filename,
+      ownerId,
+      contentType,
+      visibility,
+      status,
+    });
+    return this.ingestService.createPendingRecord(parsed);
   }
 
   /**
@@ -166,6 +184,28 @@ export class IngestResolver {
 
     // Return immediate success with job reference
     return { ok: true, fileId, message: jobId };
+  }
+
+  /**
+   * Mutation: updateVisibility
+   * - Updates a file's visibility by its id.
+   * - Returns a simple boolean to indicate success.
+   */
+  @Mutation(() => Boolean)
+  async updateVisibility(
+    @Args('fileId', { type: () => ID }) fileId: string,
+    @Args('visibility', { type: () => GqlFileVisibility }) visibility: FileVisibilityValue,
+    @CurrentUser() user: { sub: string },
+  ): Promise<boolean> {
+    const userId = user.sub;
+    const ownerId = await this.ingestService.getFileOwnerId(fileId);
+    // Not found → 404
+    if (!ownerId) throw new NotFoundException('File not found');
+    // Ownership mismatch → 403
+    if (ownerId !== userId) throw new ForbiddenException('You do not own this file');
+
+    await this.ingestService.updateVisibilityById(fileId, visibility, userId);
+    return true;
   }
 
   /**

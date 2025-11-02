@@ -1,24 +1,24 @@
-.PHONY: dev web gateway static api up down worker-chat
+.PHONY: dev web gateway static api up down worker-chat all-node workers start-all
 COMPOSE := docker compose -f infra/docker/docker-compose.dev.yml
 
-dev:
-	pnpm -r --parallel dev
-
-# 개별 앱 실행
 web:
-	pnpm --filter @tweek-ninja/web dev
+	pnpm --filter @talkie/web dev
 
 gateway:
-	pnpm --filter @tweek-ninja/gateway start:dev
+	pnpm --filter @talkie/gateway start:dev
 
 static:
-	pnpm --filter @tweek-ninja/static dev
+	pnpm --filter @talkie/static dev
 
 codegen:
-	pnpm --filter @tweek-ninja/web gql:gen
+	pnpm --filter @talkie/web gql:gen
 
 build-types:
-	pnpm -r --filter @tweek/types --filter @tweek/types-zod run build
+	pnpm -r --filter @talkie/types --filter @talkie/types-zod run build
+
+build-events:
+	pnpm -r --filter @talkie/events-contracts run build
+
 
 clean:
 	pnpm -r run clean || true
@@ -62,3 +62,4 @@ worker-index:
 	@. .venv/bin/activate && \
 	export PYTHONPATH=$$(pwd)/apps/workers && \
 	python -m index_worker.main 2>&1
+

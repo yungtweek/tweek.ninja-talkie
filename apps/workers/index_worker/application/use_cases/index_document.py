@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Literal
+from typing import Optional, Literal, Awaitable, Callable, Any
 
 from index_worker.application.index_document import index_document, IndexResult
 from index_worker.domain.ports import VectorRepository
@@ -35,6 +35,7 @@ class IndexDocumentUseCase:
             embedder: Embedder,
             vector_repo: VectorRepository,
             metadata_repo: Optional[MetadataRepo] = None,
+            emit_event: Optional[Callable[[dict[str, Any]], Awaitable[None]]] = None,
             default_embedding_model: Optional[str] = None,
             default_chunk_mode: Literal["word", "char", "token"] = "token",
             default_chunk_size: int = 500,
@@ -43,6 +44,7 @@ class IndexDocumentUseCase:
         self.embedder = embedder
         self.vector_repo = vector_repo
         self.metadata_repo = metadata_repo
+        self.emit_event = emit_event
         self.default_embedding_model = default_embedding_model
         self.default_chunk_mode = default_chunk_mode
         self.default_chunk_size = default_chunk_size
@@ -57,6 +59,7 @@ class IndexDocumentUseCase:
             embedder=self.embedder,
             vector_repo=self.vector_repo,
             metadata_repo=self.metadata_repo,
+            emit_event=self.emit_event,
             embedding_model=cmd.embedding_model or self.default_embedding_model,
             chunk_mode=cmd.chunk_mode or self.default_chunk_mode,
             chunk_size=cmd.chunk_size or self.default_chunk_size,

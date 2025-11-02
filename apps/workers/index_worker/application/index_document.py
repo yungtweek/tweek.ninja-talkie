@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 import logging
-from typing import TypedDict, Optional, Literal
+from typing import TypedDict, Optional, Literal, Awaitable, Callable, Any
 from datetime import datetime, UTC
 
 from index_worker.application.extract_text import clean_text, extract_text  # expects (raw_bytes, filename)
@@ -10,6 +10,33 @@ from index_worker.application.chunking import chunk_text
 from index_worker.domain.ports import Embedder, MetadataRepo, VectorRepository
 
 logger = logging.getLogger(__name__)
+
+async def _safe_emit(
+    emit_event: Optional[Callable[[dict[str, Any]], Awaitable[None]]],
+    type_name: str,
+    payload: dict[str, Any],
+    *,
+    v: int = 1,
+    ts: Optional[int] = None,
+    correlation_id: Optional[str] = None,
+    source: Optional[Literal["gateway", "worker", "api"]] = None,
+) -> None:
+    if emit_event is None:
+        return
+    try:
+        event: dict[str, Any] = {
+            "v": v,
+            "ts": ts if ts is not None else int(time.time() * 1000),
+            "type": type_name,
+            "payload": payload,
+        }
+        if correlation_id is not None:
+            event["correlationId"] = correlation_id
+        if source is not None:
+            event["from"] = source
+        await emit_event(event)
+    except Exception as e:
+        logger.warning("event emit failed: %s", e)
 
 # --- Result type ------------------------------------------------------------
 class IndexResult(TypedDict, total=False):
@@ -35,6 +62,7 @@ async def index_document(
     embedder: Embedder,
     vector_repo: VectorRepository,
     metadata_repo: Optional[MetadataRepo] = None,
+    emit_event: Optional[Callable[[dict[str, Any]], Awaitable[None]]] = None,
     embedding_model: Optional[str] = None,
     chunk_mode: Literal["word", "char", "token"] = "token",
     chunk_size: int = 500,
@@ -89,10 +117,22 @@ async def index_document(
                     meta_path=["status"],
                     meta_value="indexed",
                 )
+                await _safe_emit(emit_event, "file.status.changed", {
+                    "id": file_id,
+                    "prev": "ready",
+                    "next": "indexed"
+                })
             except Exception as me:
                 logger.warning("metadata update (indexed) failed: %s", me)
 
         # 4) Embed (batch)
+        # await _safe_emit(emit_event, {
+        #     "type": "status",
+        #     "fileId": file_id,
+        #     "userId": user_id,
+        #     "status": "vectorizing",  # transitional state (optional)
+        #     "ts": int(time.time() * 1000),
+        # })
         vectors = await embedder.embed_batch([c.text.text for c in chunks])
         if not vectors or len(vectors) != len(chunks):
             return _done(False, t0, user_id, file_id, filename, chunk_mode, chunk_size, overlap, error="Embedding size mismatch")
@@ -111,6 +151,11 @@ async def index_document(
                     meta_path=["status"],
                     meta_value="vectorized",
                 )
+                await _safe_emit(emit_event, "file.status.changed", {
+                    "id": file_id,
+                    "prev": "indexed",
+                    "next": "vectorized"
+                })
                 logger.info("metadata updated")
             except Exception as me:
                 logger.warning("metadata update (vectorized) failed: %s", me)
@@ -119,11 +164,15 @@ async def index_document(
 
     except Exception as e:
         logger.exception("index_document failed: %s", e)
-        # try:
         if metadata_repo:
-            await metadata_repo.mark_failed(file_id, str(e))
-        # except Exception:
-        #     pass
+            try:
+                await metadata_repo.mark_failed(file_id, str(e))
+            except Exception:
+                pass
+        await _safe_emit(emit_event, "file.error", {
+            "id": file_id,
+            "message": str(e),
+        })
         return _done(False, t0, user_id, file_id, filename, chunk_mode, chunk_size, overlap, error=str(e))
 
 

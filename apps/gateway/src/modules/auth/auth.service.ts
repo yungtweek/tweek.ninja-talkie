@@ -9,8 +9,8 @@ import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { JwtPayload } from './types/jwt-payload';
 import { UsersRepository } from '@/modules/users/users.repository';
-import { AuthViewZ } from '@tweek/types-zod';
-import type { AuthViewZod } from '@tweek/types-zod';
+import { AuthViewZ } from '@talkie/types-zod';
+import type { AuthViewZod } from '@talkie/types-zod';
 
 /** Service layer for authentication flows (login, token issuance). */
 @Injectable()

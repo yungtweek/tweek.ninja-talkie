@@ -16,6 +16,8 @@ import {
   NotFoundException,
   Post,
   Query,
+  Res,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '@/modules/auth/jwt.guard';
@@ -27,8 +29,10 @@ import { S3ServiceException } from '@aws-sdk/client-s3';
 import { ObjectStorageService } from '@/modules/infra/object-storage/object-storage.service';
 import { IngestService } from '@/modules/ingest/ingest.service';
 import { type AuthUser, CurrentUser } from '@/modules/auth/current-user.decorator';
-import { FileStatus, FileVisibility } from '@/modules/ingest/gql/file.type';
-import { FileMetadataZDto } from '@/modules/ingest/ingest.zod';
+import { FileStatus, FileVisibility } from '@talkie/types-zod';
+import { FileMetadataRegisterZDto, FileMetadataUpsertZDto } from '@/modules/ingest/ingest.zod';
+
+import type { Request, Response } from 'express';
 
 /** DTO for presign PUT request body. */
 export class CreatePutUrlDto {
@@ -105,15 +109,15 @@ export class IngestController {
     };
 
     // Prepare DB metadata record (PENDING)
-    const pendingMetadata: FileMetadataZDto = {
+    const pendingMetadata: FileMetadataRegisterZDto = {
       bucket: putUrl.bucket,
       key: putUrl.key,
       filename: dto.filename,
       contentType: mime,
       // size: ContentLength,
       // etag: (ETag ?? '').replace(/"/g, ''),
-      status: FileStatus.PENDING,
-      visibility: FileVisibility.PRIVATE,
+      status: FileStatus.Pending,
+      visibility: FileVisibility.Private,
       ownerId: user.sub,
       extension: ext,
     };
@@ -147,16 +151,15 @@ export class IngestController {
     const { etag, size, lastModified, contentType } = statObject;
 
     // Build metadata payload for DB update
-    const fileMetadata: FileMetadataZDto = {
+    const fileMetadata: FileMetadataUpsertZDto = {
       bucket,
       key,
-      size,
+      size: size ?? 0,
       filename,
       contentType,
       etag: (etag ?? '').replace(/"/g, ''),
-      status: FileStatus.READY,
-      visibility: FileVisibility.PRIVATE,
-      ownerId: user.sub,
+      status: FileStatus.Ready,
+      visibility: FileVisibility.Private,
       uploadedAt: lastModified,
       modifiedAt: lastModified,
     };
@@ -208,5 +211,14 @@ export class IngestController {
       // Unknown error type
       throw new InternalServerErrorException('headObject failed');
     }
+  }
+
+  @Get('events')
+  async events(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.ingestService.streamUserEvents(req, res, user.sub);
   }
 }

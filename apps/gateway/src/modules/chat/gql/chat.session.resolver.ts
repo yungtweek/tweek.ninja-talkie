@@ -25,7 +25,7 @@ import {
   SessionEvent,
 } from '@/modules/chat/gql/chat.type';
 import { JwtAuthGuard } from '@/modules/auth/jwt.guard';
-import { ChatSessionZ } from '@tweek/types-zod';
+import { ChatSessionZ } from '@talkie/types-zod';
 import { SESSION_PUBSUB } from '@/modules/infra/pubsub/pubsub.module';
 import { PubSubEngine } from 'graphql-subscriptions';
 import { z } from 'zod';

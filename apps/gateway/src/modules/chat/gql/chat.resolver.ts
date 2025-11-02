@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { ForbiddenException, Injectable, NotFoundException, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '@/modules/auth/jwt.guard';
 import { CurrentUser } from '@/modules/auth/current-user.decorator';
-import { ChatMessageZ } from '@tweek/types-zod';
+import { ChatMessageZ } from '@talkie/types-zod';
 import { PageInfo } from '@/modules/infra/graphql/types/page-info.type';
 
 @Resolver(() => ChatSession)

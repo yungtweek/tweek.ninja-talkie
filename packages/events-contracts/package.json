@@ -1,5 +1,5 @@
 {
-  "name": "@talkie/types-zod",
+  "name": "@talkie/events-contracts",
   "version": "0.1.0",
   "private": true,
   "main": "./dist/index.js",
@@ -12,7 +12,8 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "zod": "^4.1.12"
+    "zod": "^4.1.12",
+    "@talkie/types-zod": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.6.3"

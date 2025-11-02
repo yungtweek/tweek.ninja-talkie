@@ -6,7 +6,7 @@
  */
 // src/modules/users/users.repository.ts
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ChatMessageZod, ChatSessionZod } from '@tweek/types-zod';
+import { ChatMessageZod, ChatSessionZod } from '@talkie/types-zod';
 import { Pool } from 'pg';
 import { PG_POOL } from '@/modules/infra/database/database.module';
 

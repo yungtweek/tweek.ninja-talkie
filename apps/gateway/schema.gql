@@ -50,46 +50,30 @@ type FileEdge {
 }
 
 type FileListType {
-  contentType: String
+  contentType: String!
   createdAt: DateTime!
   filename: String!
   id: ID!
-  size: Float
+  size: Float!
   status: FileStatus!
-  uploadedAt: DateTime
+  uploadedAt: DateTime!
   visibility: FileVisibility!
 }
 
-input FileMetadataInput {
-  bucket: String!
-  checksumSha256Expected: String
-  contentType: String
-  etag: String
-  extension: String
-  filename: String!
-  key: String!
-  modifiedAt: DateTime
-  ownerId: String!
-  size: Float
-  sizeExpected: Float
-  status: FileStatus = PENDING
-  uploadedAt: DateTime
-  visibility: FileVisibility = PRIVATE
-}
-
 enum FileStatus {
-  DELETED
-  FAILED
-  INDEXED
-  PENDING
-  READY
-  VECTORIZED
+  deleted
+  failed
+  indexed
+  pending
+  ready
+  vectorized
 }
 
 type FileType {
   bucket: String!
   checksumSha256Expected: String
   contentType: String
+  createdAt: DateTime!
   etag: String
   extension: String
   filename: String!
@@ -105,10 +89,10 @@ type FileType {
 }
 
 enum FileVisibility {
-  DEPARTMENT
-  FOLLOWERS
-  PRIVATE
-  PUBLIC
+  department
+  followers
+  private
+  public
 }
 
 type Message {
@@ -133,7 +117,8 @@ type MessageEdge {
 type Mutation {
   deleteChatSession(sessionId: ID!): DeleteChatSessionResult!
   deleteFile(fileId: ID!): DeleteFilePayload!
-  registerFile(input: FileMetadataInput!): FileType!
+  registerFile(bucket: String!, contentType: String!, filename: String!, key: String!, ownerId: String!, status: FileStatus = pending, visibility: FileVisibility = private): FileType!
+  updateVisibility(fileId: ID!, visibility: FileVisibility!): Boolean!
 }
 
 type PageInfo {

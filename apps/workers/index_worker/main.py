@@ -6,10 +6,12 @@ Index Worker Entrypoint
 """
 # main.py
 import asyncio
+import json
 import logging
 import signal
 import sys
 from logging import getLogger
+from typing import Any
 
 from aiokafka import AIOKafkaConsumer
 from pydantic import ConfigDict, BaseModel
@@ -23,6 +25,7 @@ from index_worker.settings import Settings
 from index_worker.infrastructure.di import make_embedder, make_vector_repo, make_metadata_repo, \
     shutdown_metadata_repo, shutdown_vector_repo
 from index_worker.infrastructure.objectstore.s3_client import download_file_to_bytes
+from redis.asyncio import Redis
 
 logger = getLogger('IndexWorker')
 
@@ -100,6 +103,7 @@ async def main():
     embedder = await make_embedder(settings)
     vector_repo = await make_vector_repo(settings)
     metadata_repo = await make_metadata_repo(settings)
+    redis = Redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
     await consumer.start()
     logger.info("🏁 Worker started. Press Ctrl+C to stop.")
 
@@ -144,6 +148,9 @@ async def main():
                         logger.error(f"[{job_id}] S3 download failed: bucket={bucket} key={key}")
                         continue
 
+                    async def publish_file_event(event: dict[str, Any]) -> None:
+                        await redis.publish(f"user:{user_id}:files", json.dumps(event))
+
                     # Construct use-case with shared dependencies and default chunking config
                     index_service = IndexDocumentUseCase(
                         embedder=embedder,
@@ -153,6 +160,7 @@ async def main():
                         default_chunk_mode="token",
                         default_chunk_size=500,
                         default_overlap=50,
+                        emit_event=publish_file_event,
                     )
 
                     # Build application-level payload passed into the request handler
