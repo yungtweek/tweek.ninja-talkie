@@ -1,4 +1,4 @@
-# 🥷 tweek.ninja — AI AGENT STARTER KIT FOR DUMMIES
+# Talkie🤔 — AI AGENT STARTER KIT FOR DUMMIES
 
 > LLM 기반 RAG / AI Agent 포트폴리오 서비스  
 > 현재도 계속 개발 및 개선 중이며, 구조는 **Gateway ↔ Worker ↔ Infra** 로 구성되어 있습니다.  
