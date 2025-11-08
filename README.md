@@ -90,10 +90,10 @@ talkie/
 
 ## 📈 진행 현황
 
-- ✅ Gateway 완성 (Auth / Chat / Ingest / Session / File 모듈)
-- ✅ Index Worker 완성 (청킹 / 임베딩 / 업서트 / 메트릭)
-- ✅ Chat Worker 완성 (스트리밍 / 메트릭 / SSE / RAG 지원)
-- ⚙️ Web (Next.js) 작성 중
+- ✅ Gateway (Auth / Chat / Ingest / Session / File 모듈 지원)
+- ✅ Index Worker (청킹 / 임베딩 / 업서트 / 메트릭 지원)
+- ✅ Chat Worker (스트리밍 / 메트릭 / SSE / RAG 지원)
+- ✅ Web (기본 구조, 인증, 세션, 채팅 UI 등 지원)
 - ⚙️ Title Worker 작성 중
 - 📝 문서 (docs/features/*) 작성 중
 
@@ -180,7 +180,7 @@ graph LR
 - ✅ Gateway implemented (Auth / Chat / Ingest / Session / File modules)  
 - ✅ Index Worker implemented (Chunking / Embedding / Upsert / Metrics)  
 - ✅ Chat Worker implemented (Streaming / Metrics / SSE / RAG support)  
-- ⚙️ Web (Next.js) under development  
+- ✅ Web (base structure, authentication, sessions, chat UI supported)  
 - ⚙️ Title Worker under development  
 - 📝 Docs (docs/features/*) in progress  
 
@@ -264,12 +264,12 @@ graph LR
 
 ## 📈 進捗状況
 
-- ✅ Gateway 完了 (Auth / Chat / Ingest / Session / File モジュール)
-- ✅ Index Worker 完了 (分割 / 埋め込み / アップサート / メトリクス)
-- ✅ Chat Worker 完了 (ストリーミング / メトリクス / SSE / RAG対応)
-- ⚙️ Web (Next.js) 開発中
-- ⚙️ Title Worker 開発中
-- 📝 ドキュメント (docs/features/*) 執筆中
+- ✅ Gateway (Auth / Chat / Ingest / Session / File モジュール対応)
+- ✅ Index Worker (分割 / 埋め込み / アップサート / メトリクス対応)
+- ✅ Chat Worker (ストリーミング / メトリクス / SSE / RAG対応)
+- ✅ Web (基本構造、認証、セッション、チャットUI対応)
+- ⚙️ Title Worker
+- 📝 ドキュメント (docs/features/*)
 
 ---
 
