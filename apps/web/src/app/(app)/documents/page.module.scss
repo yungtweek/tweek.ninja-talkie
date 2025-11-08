@@ -1,0 +1,204 @@
+/* Talkie :: Documents List – card-styled table matching uploader look */
+
+$table-bg: #181818;
+$border-weak: rgba(255, 255, 255, 0.08);
+$border-mid: rgba(255, 255, 255, 0.12);
+$border-strong: rgba(255, 255, 255, 0.25);
+$shadow-lg: 0 6px 20px rgba(0, 0, 0, 0.25);
+$text-high: #e5e5e5;
+$text-mid: #d6d6d6;
+$text-low: #a1a1a1;
+
+.tableCard {
+  background: var(--surface-1);
+  border: 1px solid var(--border-weak);
+  border-radius: 12px;
+  padding: 16px;
+  //box-shadow: $shadow-lg;
+  margin-top: 14px;
+}
+
+.tableHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+
+  h3 {
+    font-size: 14px;
+    color: var(--text-high);
+    margin: 0;
+  }
+}
+
+.headerActions {
+  display: flex;
+  gap: 8px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+
+  thead th {
+    //text-align: left;
+    font-size: 12px;
+    color: var(--text-low);
+    font-weight: 600;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-weak);
+    text-align: center;
+    cursor: default;
+  }
+
+  tbody td {
+    font-size: 13px;
+    color: $text-mid;
+    padding: 12px;
+    border-bottom: 1px solid var(--border-weak);
+  }
+
+  tbody tr:hover td {
+    background: rgba(255, 255, 255, 0.03);
+  }
+}
+
+.filenameCell {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actionsCell {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.emptyCell {
+  text-align: center;
+  color: #9a9a9a;
+  padding: 24px 12px;
+}
+
+/* badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: .2px;
+  border: 1px solid var(--border-mid);
+  cursor: default;
+}
+
+.badgeProcessing {
+  //background: rgba(234,179,8,0.08);
+  background: var(--progress-bg);
+  color: var(--progress-fg);
+  border-color: var(--progress-border);
+}
+
+
+.badgeReady {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  border-color: var(--warn-border);
+}
+
+.badgeVectorized {
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+  border-color: var(--ok-border);
+  font-weight: 600;
+  //box-shadow: 0 0 6px rgba(59,130,246,0.4);
+}
+
+.badgeMuted {
+  background: var(--muted-badge-bg);
+  color: var(--muted-badge-fg);
+  border-color: var(--border-mid);
+}
+
+.badgePublic {
+  background: var(--info-bg);
+  color: var(--info-fg);
+  border-color: var(--info-border);
+  cursor: pointer;
+
+  &:hover {
+    //transform: translateY(-1px);
+    border-color: var(--info-strong-border)
+  }
+}
+
+.badgePrivate {
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  border-color: var(--danger-border);
+  cursor: pointer;
+
+  &:hover {
+    //transform: translateY(-1px);
+    border-color: var(--danger-strong-border);
+  }
+}
+
+/* buttons */
+.btn {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-mid);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-high);
+  cursor: pointer;
+  transition: transform .06s ease, border-color .2s ease, background .2s ease;
+
+  &:hover {
+    //transform: translateY(-1px);
+    border-color: $border-strong;
+    background: rgba(255, 255, 255, 0.07);
+  }
+}
+
+.btnDanger {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+
+  &:hover {
+    border-color: var(--danger-strong-border);
+    background: var(--danger-bg);
+  }
+}
+
+.btnGhost {
+  padding: 6px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border-mid);
+  background: transparent;
+  color: var(--text-low);
+  cursor: pointer;
+}
+
+.visibilityBtn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.visibilityBtn span {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+
+

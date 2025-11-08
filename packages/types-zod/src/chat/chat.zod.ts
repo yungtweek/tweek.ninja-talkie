@@ -1,5 +1,22 @@
 import { z } from 'zod';
 
+export const ChatMode = z.enum(['gen', 'rag']);
+
+export const EnqueueInputZ = z.object({
+  message: z.string().trim().min(1, 'message is required').max(4000),
+  jobId: z.uuid(),
+  sessionId: z.uuid().nullish(),
+  mode: ChatMode.optional().default('gen'),
+});
+
+export type EnqueueInput = z.infer<typeof EnqueueInputZ>;
+
+export const EnqueueOutputZ = z.object({
+  sessionId: z.uuid(),
+  jobId: z.uuid(),
+});
+export type EnqueueOutput = z.infer<typeof EnqueueOutputZ>;
+
 export const ChatSessionZ = z.object({
   id: z.uuid(),
   title: z.string().optional().nullable(),

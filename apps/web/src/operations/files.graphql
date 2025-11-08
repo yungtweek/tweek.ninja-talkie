@@ -1,0 +1,53 @@
+query Files($first: Int!, $after: String) {
+    files(first: $first, after: $after) {
+        edges {
+            cursor
+            node {
+               ...FileMeta
+            }
+        }
+        pageInfo {
+            hasNextPage
+            hasPreviousPage
+            startCursor
+            endCursor
+        }
+    }
+}
+
+fragment FileMeta on FileListType {
+    __typename
+    id
+    filename
+    contentType
+    size
+    status
+    visibility
+    uploadedAt
+    createdAt
+}
+
+fragment FileStatus on FileListType {
+    __typename
+    id
+    status
+}
+
+fragment FileVisibility on FileListType {
+    __typename
+    id
+    visibility
+}
+
+mutation DeleteFile($fileId: ID!) {
+    deleteFile(fileId: $fileId) {
+        ok
+        fileId
+        deletedCount
+        message
+    }
+}
+
+mutation UpdateVisibility($fileId: ID!, $visibility: FileVisibility!) {
+    updateVisibility(fileId: $fileId, visibility: $visibility)
+}

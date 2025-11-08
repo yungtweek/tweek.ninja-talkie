@@ -1,0 +1,8 @@
+# Next.js
+.next/
+out/
+node_modules/
+dist/
+*.log
+.env*
+!.env.example

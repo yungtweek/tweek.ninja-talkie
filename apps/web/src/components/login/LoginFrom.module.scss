@@ -1,0 +1,129 @@
+.loginSection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  //min-height: 100%;
+  padding: 2rem 1rem;
+}
+
+.loginCard {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-mid);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--foreground) 10%, transparent);
+
+  &.compact {
+    padding: 1rem;
+  }
+}
+
+.title {
+  margin: 0 0 1rem;
+  text-align: center;
+  font-weight: 600;
+  color: var(--text-high);
+}
+
+.success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem 0;
+  min-height: 6rem;
+  text-align: center;
+  color: var(--text-high);
+}
+
+.successText {
+  color: var(--text-mid);
+  font-size: 0.95rem;
+}
+
+.success .title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ok-fg);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--text-mid);
+}
+
+.input {
+  width: 100%;
+  border: 1px solid var(--border-mid);
+  background: var(--surface-0, transparent);
+  color: var(--text-high);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  outline: none;
+
+  &:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+}
+
+.submit {
+  align-self: stretch;
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--accent);
+  color: #fff;
+  background: var(--accent);
+  font-weight: 600;
+  transition: background 0.2s ease, opacity 0.2s ease;
+  cursor: pointer;
+  margin-top: 2rem;
+
+  &:hover {
+    opacity: 0.95;
+  }
+
+  &[disabled] {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.error {
+  margin-top: 0.5rem;
+  color: var(--danger-600, #e11d48);
+  font-size: 0.9rem;
+}
+
+.spinnerWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 6rem;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-mid);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

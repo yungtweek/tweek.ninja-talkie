@@ -1,0 +1,5 @@
+# apps/web/.prettierignore
+.next
+dist
+build
+*.generated.ts

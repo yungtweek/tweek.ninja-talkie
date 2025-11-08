@@ -1,0 +1,61 @@
+query ChatSession($id: ID!, $first: Int = 50) {
+  chatSession(id: $id) {
+    id
+    title
+    createdAt
+    updatedAt
+    messages(first: $first) {
+      edges {
+        cursor
+        node {
+          id
+          role
+          content
+          turn
+          messageIndex
+          sourcesJson
+        }
+      }
+      pageInfo {
+        hasPreviousPage
+        hasNextPage
+        startCursor
+        endCursor
+      }
+    }
+  }
+}
+
+fragment ChatSessionMeta on ChatSession {
+    id
+    title
+    createdAt
+    updatedAt
+}
+
+query ChatSessionList($first: Int = 20, $after: String) {
+  chatSessionList(first: $first, after: $after) {
+    edges {
+      node {
+        id
+        title
+        createdAt
+        updatedAt
+      }
+    }
+    pageInfo {
+      hasPreviousPage
+      hasNextPage
+      startCursor
+      endCursor
+    }
+  }
+}
+
+mutation DeleteSession($sessionId: ID!) {
+    deleteChatSession(sessionId: $sessionId) {
+        ok
+        status
+        sessionId
+    }
+}

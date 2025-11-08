@@ -1,0 +1,170 @@
+.form {
+  padding: 1.7rem 1.7rem;
+
+  .wrap {
+    width: 100%;
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: nowrap;
+  }
+
+  textarea {
+    font: inherit;
+    display: inline-block;
+    width: 100%;
+    font-size: 1.15rem;
+    line-height: 1.7rem;
+    min-height: 1.7rem;
+    padding: 0.7rem 1.45rem;
+    border: none;
+    border-radius: 24px;
+    background: var(--border);
+    color: var(--foreground);
+    flex: 1;
+    resize: none;
+  }
+
+  .button {
+    font-size: 1.15rem;
+    line-height: 1.7rem;
+    padding: 0.7rem 1.45rem;
+    border: none;
+    border-radius: 24px;
+    color: var(--foreground);
+    background: var(--border);
+
+    &:disabled {
+      color: var(--muted);
+    }
+  }
+
+
+}
+
+.fadeWrap {
+  transition: opacity 0.3s ease;
+}
+
+.fadeWrap.hidden {
+  opacity: 0;
+}
+
+.fadeWrap.visible {
+  opacity: 1;
+}
+
+.article {
+  font-size: 1.15rem;
+  line-height: 2rem;
+  font-weight: 400;
+  text-wrap: wrap;
+  overflow-wrap: break-word;
+  unicode-bidi: isolate;
+  text-size-adjust: 100%;
+
+  display: flex;
+  flex-direction: column;
+
+  :not(:first-child):not(.typingDots):not(.typingDots>span):not(.hint) {
+    //margin-top: 1.15rem;
+    margin-top: 0.5rem;
+  }
+
+  .hint {
+    margin-top: 0;
+    font-size: 0.9rem;
+    color: var(--text-low);
+  }
+
+  //white-space: pre-wrap;
+
+  &.user {
+    max-width: 80%;
+    width: fit-content;
+    padding: 0.5rem 1.2rem;
+    margin-left: auto;
+    border-radius: 24px;
+    background: var(--border);
+  }
+
+  &.system {
+    width: 100%;
+    padding: 0.7rem 1.45rem;
+  }
+
+  .typingDots {
+    font-size: 2rem;
+    display: inline-flex;
+    margin-top: 0;
+    gap: 0.3rem;
+
+    span {
+      display: inline-block;
+      animation: bounce 1s infinite;
+    }
+
+    span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+  }
+
+  @keyframes bounce {
+    0%, 80%, 100% {
+      transform: translateY(0);
+      opacity: 0.2;
+    }
+    40% {
+      transform: translateY(-6px);
+      opacity: 1;
+    }
+  }
+
+  p:not(:first-child) {
+    //margin-top: 1.15rem;
+  }
+
+  li {
+    margin-left: 3em;
+  }
+
+  pre {
+    border-radius: 12px;
+    background: var(--surface-1);
+    overflow-x: auto;
+    padding: 1rem 1.5rem;
+    font-size: 0.9em;
+  }
+
+}
+
+
+.conversation {
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  flex: 1;
+  padding: 0 1.7rem;
+  overflow: auto;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2.3rem;
+  min-height: 100%;
+  padding-bottom: 6rem;
+
+  list-style: none;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.user_input {
+  width: 100%;
+}

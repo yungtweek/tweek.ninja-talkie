@@ -1,0 +1,42 @@
+.container {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+}
+
+.segmented {
+  display: inline-flex;
+  background: var(--border, #27272a);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.segBtn {
+  padding: 6px 12px;
+  font-size: 14px;
+  border: none;
+  background: transparent;
+  color: var(--muted, #9ca3af);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  }
+
+}
+.active {
+  background: var(--accent, #0a84ff);
+  color: var(--foreground, #ededed);
+  &:hover {
+    background: var(--accent, #0a84ff);
+  }
+}
+
+
+.hint {
+  font-size: 12px;
+  color: var(--muted, #9ca3af);
+}

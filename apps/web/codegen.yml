@@ -1,0 +1,25 @@
+overwrite: true
+schema:
+  - "../gateway/schema.gql"
+
+documents:
+  - "src/**/*.{graphql,gql}"
+  - "!src/gql/**/*"
+
+generates:
+  src/gql/:
+    preset: client
+    presetConfig:
+      fragmentMasking: true
+    plugins: []                     #
+    config:
+      ignoreNoDocuments: true
+      enumsAsTypes: true
+      useTypeImports: true
+
+config:
+  useTypeImports: true
+  scalars:
+    DateTime: string
+    Date: string
+    UUID: string

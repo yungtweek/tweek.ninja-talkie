@@ -41,7 +41,6 @@ out/
 .prettierrc
 dev/
 apps/workers/title_worker/
-apps/web/
 apps/static/
 docs/todo/
 /docs/architecture/rag_index_contract.md
