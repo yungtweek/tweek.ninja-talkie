@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     SUMMARIZE_THRESHOLD: int
 
     REDIS_URL: str = "redis://localhost:6379"
-    KAFKA_BOOTSTRAP: str = "localhost:9092"
+    KAFKA_BOOTSTRAP: str = "localhost:29092"
 
 
     @classmethod
