@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     WEAVIATE_API_KEY: Optional[str] = None
     WEAVIATE_COLLECTION: str = "Chunks"
     BATCH_SIZE: int = 64
-    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_MODEL: str = "text-embedding-3-large"
 
     S3_ENDPOINT: str  = Field(..., description="S3_ENDPOINT is required")
     S3_ACCESS_KEY: str  = Field(..., description="S3_ACCESS_KEY is required")

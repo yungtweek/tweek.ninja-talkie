@@ -32,7 +32,7 @@ class OpenAIEmbedder:
         self,
         *,
         api_key: str | None = None,
-        model: str = "text-embedding-3-small",
+        model: str = "text-embedding-3-large",
         base_url: str | None = None,
         batch_size: int = 128,
         timeout_s: int = 60,

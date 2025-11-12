@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import os
 import logging
+import re
+import unicodedata
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+
+from uuid import uuid5, NAMESPACE_DNS
+
+from weaviate.classes.config import Configure, Property, DataType, Tokenization
+
 from index_worker.domain.entities import Chunk
 
 logger = logging.getLogger("WeaviateVectorRepo")
@@ -27,6 +34,47 @@ except Exception as e:  # pragma: no cover
 
 
 # --- Helpers -----------------------------------------------------------------
+
+
+def _normalize_filename(name: Optional[str]) -> Optional[str]:
+    """Normalize a filename for keyword search."""
+    if not name:
+        return None
+    s = os.path.basename(name)
+    s = s.lower()
+    s, _ = os.path.splitext(s)
+    # Replace separators with space
+    s = re.sub(r"[._\-]+", " ", s)
+    # Insert spaces at camelCase boundaries
+    s = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", s)
+    # Insert spaces between letter and digit boundaries
+    s = re.sub(r"(?<=[A-Za-z])(?=[0-9])|(?<=[0-9])(?=[A-Za-z])", " ", s)
+    # Collapse multiple spaces and strip
+    s = re.sub(r"\s+", " ", s).strip()
+    # Normalize unicode (NFC)
+    s = unicodedata.normalize("NFC", s)
+    return s
+
+def _normalize_text_nfc(val: Optional[str]) -> Optional[str]:
+    if val is None:
+        return None
+    if not isinstance(val, str):
+        val = str(val)
+    return unicodedata.normalize("NFC", val)
+
+# --- New helpers ---
+def _is_meaningful_text(val: Optional[str], min_chars: int = 30) -> bool:
+    if not val:
+        return False
+    # Strip whitespace and check length
+    s = str(val).strip()
+    return len(s) >= min_chars
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, "").strip() or default)
+    except Exception:
+        return default
 
 def _chunk_identity(
     chunk: Union[Dict[str, Any], Any]
@@ -101,6 +149,8 @@ def _chunk_props(chunk: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
         text_val = getattr(chunk, "text", None)
         if hasattr(text_val, "text"):
             text_val = text_val.text
+        # Normalize text to NFC
+        text_val = _normalize_text_nfc(text_val)
 
         # page is optional and may be string in meta
         page_raw = meta.get("page")
@@ -112,6 +162,8 @@ def _chunk_props(chunk: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
             "chunk_id": chunk_id,
             "filename": filename,
             "text": text_val,
+            "text_tri": text_val,
+            "filename_kw": _normalize_filename(filename),
             "chunk_index": int(getattr(chunk, "order", 0)),
             "page": page,
         }
@@ -134,6 +186,8 @@ def _chunk_props(chunk: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
     chunk_id = str(chunk.get("chunk_id") or chunk.get("id") or "")
     filename = chunk.get("filename") or md.get("filename")
     text_val = chunk.get("text") or md.get("text")
+    # Normalize text to NFC
+    text_val = _normalize_text_nfc(text_val)
     chunk_index = int(chunk.get("index") or chunk.get("chunk_index") or md.get("chunk_index") or 0)
     page_raw = chunk.get("page") or md.get("page")
     page = int(page_raw) if isinstance(page_raw, (int, str)) and str(page_raw).isdigit() else None
@@ -144,9 +198,21 @@ def _chunk_props(chunk: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
         "chunk_id": chunk_id,
         "filename": filename,
         "text": text_val,
+        "text_tri": text_val,
+        "filename_kw": _normalize_filename(filename),
         "chunk_index": chunk_index,
         "page": page,
     }
+
+
+# Deterministic UUID for a chunk object, stable across re-index runs.
+# Based on (user_id, file_id, chunk_id) to avoid collisions even if chunk counts grow.
+def _make_weaviate_uuid(user_id: str, file_id: str, chunk_id: str) -> str:
+    """
+    Deterministic UUID for a chunk object, stable across re-index runs.
+    Based on (user_id, file_id, chunk_id) to avoid collisions even if chunk counts grow.
+    """
+    return str(uuid5(NAMESPACE_DNS, f"{user_id}:{file_id}:{chunk_id}"))
 
 
 # --- Repository --------------------------------------------------------------
@@ -171,6 +237,8 @@ class WeaviateVectorRepository:
         self.collection_name = collection
         self.batch_size = batch_size
         self.timeout = timeout
+        self._expected_dim: Optional[int] = None
+        self._min_chunk_chars: int = _env_int("MIN_CHUNK_CHARS", 30)
 
         if weaviate is None:
             raise RuntimeError("weaviate client is not installed")
@@ -201,20 +269,88 @@ class WeaviateVectorRepository:
         assert self._client_v4 is not None
         try:
             if name not in self._client_v4.collections.list_all():
-                self._client_v4.collections.create(
-                    name,
-                    description="RAG chunks",
-                    vectorizer_config=weaviate.classes.config.Configure.Vectorizer.none(),
-                    properties=[
-                        weaviate.classes.config.Property(name="user_id", data_type=weaviate.classes.config.DataType.TEXT),
-                        weaviate.classes.config.Property(name="file_id", data_type=weaviate.classes.config.DataType.TEXT),
-                        weaviate.classes.config.Property(name="chunk_id", data_type=weaviate.classes.config.DataType.TEXT),
-                        weaviate.classes.config.Property(name="filename", data_type=weaviate.classes.config.DataType.TEXT),
-                        weaviate.classes.config.Property(name="text", data_type=weaviate.classes.config.DataType.TEXT),
-                        weaviate.classes.config.Property(name="chunk_index", data_type=weaviate.classes.config.DataType.INT),
-                        weaviate.classes.config.Property(name="page", data_type=weaviate.classes.config.DataType.INT),
-                    ],
+                # Build properties (keep existing semantics)
+                props = [
+                    Property(
+                        name="text",
+                        data_type=DataType.TEXT,
+                        tokenization=Tokenization.KAGOME_KR,  # 🇰🇷 Korean tokenizer for BM25
+                        index_searchable=True,                # ✅ include in BM25
+                    ),
+                    Property(
+                        name="text_tri",
+                        data_type=DataType.TEXT,
+                        tokenization=Tokenization.TRIGRAM,
+                        index_searchable=True,
+                    ),
+                    Property(name="user_id", data_type=DataType.TEXT),
+                    Property(name="file_id", data_type=DataType.TEXT),
+                    Property(name="chunk_id", data_type=DataType.TEXT),
+                    Property(
+                        name="filename",
+                        data_type=DataType.TEXT,
+                        tokenization=Tokenization.KAGOME_KR,
+                        index_searchable=True),
+                    Property(
+                        name="filename_kw", data_type=DataType.TEXT,
+                        tokenization=Tokenization.WORD
+                    ),
+                    Property(name="chunk_index", data_type=DataType.INT),
+                    Property(name="page", data_type=DataType.INT),
+                ]
+
+                inv = Configure.inverted_index(
+                    bm25_b=0.75,
+                    bm25_k1=1.2,
+                    index_timestamps=True,
+                    stopwords_preset=None, # ✅ safer for Korean
                 )
+
+                # Try newest API first: vector_config wrapper
+                try:
+                    vector_config = getattr(Configure, "VectorConfig", None)
+                    if vector_config is not None:
+                        vec_cfg = vector_config(
+                            default_vectorizer=Configure.Vectorizer.text2vec_openai(
+                                model="text-embedding-3-large",
+                                vectorize_collection_name=False,
+                            )
+                        )
+                        self._client_v4.collections.create(
+                            name,
+                            description="RAG chunks",
+                            vector_config=vec_cfg,
+                            properties=props,
+                            inverted_index_config=inv,
+                        )
+                    else:
+                        # Some client versions accept a dict for named vectors
+                        self._client_v4.collections.create(
+                            name,
+                            description="RAG chunks",
+                            vector_config={
+                                "default": Configure.Vectorizer.text2vec_openai(
+                                    model="text-embedding-3-large",
+                                    vectorize_collection_name=False,
+                                )
+                            },
+                            properties=props,
+                            inverted_index_config=inv,
+                        )
+                except Exception:
+                    # Fallback to legacy key to avoid Pydantic type errors on mixed versions
+                    import warnings
+                    warnings.filterwarnings("ignore", message="Dep024", category=DeprecationWarning)
+                    self._client_v4.collections.create(
+                        name,
+                        description="RAG chunks",
+                        vectorizer_config=Configure.Vectorizer.text2vec_openai(
+                            model="text-embedding-3-large",
+                            vectorize_collection_name=False,
+                        ),
+                        properties=props,
+                        inverted_index_config=inv,
+                    )
         except Exception as e:  # pragma: no cover
             logger.warning("ensure v4 collection failed (might already exist): %s", e)
         return self._client_v4.collections.get(name)
@@ -317,6 +453,21 @@ class WeaviateVectorRepository:
             raise
 
     # --- v4 upsert -----------------------------------------------------------
+    def _insert_item_v4(self, _props: Dict[str, Any], _vec: List[float], _id: str) -> None:
+        """
+        Insert a single item into v4 collection with broad client compatibility.
+        Tries 'id' first; falls back to 'uuid' for older client builds.
+        """
+        assert self._collection_v4 is not None
+        try:
+            try:
+                self._collection_v4.data.insert(properties=_props, vector=_vec, id=_id)
+            except TypeError:
+                # Some client builds use 'uuid' instead of 'id'
+                self._collection_v4.data.insert(properties=_props, vector=_vec, uuid=_id)
+        except Exception as ie:
+            logger.error("v4 per-item insert failed for %s: %s", _id, ie)
+
     async def _upsert_v4(self, chunks: Sequence[Chunk], vectors: Sequence[Sequence[float]]) -> None:
         assert self._collection_v4 is not None
         logger.debug("v4 upsert %d chunks", len(chunks))
@@ -325,36 +476,67 @@ class WeaviateVectorRepository:
         ids: List[str] = []
         vecs: List[List[float]] = []
 
+        skipped_short = 0
+        skipped_dim = 0
+        inserted = 0
+        total = len(chunks)
+
         for ch, vec in zip(chunks, vectors):
             props = _chunk_props(ch)
+            # chunk-length guard
+            if not _is_meaningful_text(props.get("text"), self._min_chunk_chars):
+                skipped_short += 1
+                continue
+            # vector-dimension guard
+            if self._expected_dim is None and isinstance(vec, (list, tuple)):
+                self._expected_dim = len(vec)
+            if not isinstance(vec, (list, tuple)) or (self._expected_dim is not None and len(vec) != self._expected_dim):
+                logger.warning("skip chunk due to vector dim mismatch: got=%s expected=%s (chunk_id=%s)",
+                               getattr(ch, "id", None), self._expected_dim, getattr(ch, "id", None))
+                skipped_dim += 1
+                continue
             _uid, _fid, cid = _chunk_identity(ch)
             batch.append(props)
-            ids.append(cid)
+            obj_id = _make_weaviate_uuid(_uid, _fid, cid)
+            ids.append(obj_id)
             vecs.append(list(vec))
+            inserted += 1
 
             if len(batch) >= self.batch_size:
                 # Per-item insert for broad v4 compatibility (vectors passed here)
                 for _props, _vec, _id in zip(batch, vecs, ids):
-                    try:
-                        self._collection_v4.data.insert(properties=_props, vector=_vec)
-                    except Exception as ie:
-                        logger.error("v4 per-item insert failed for %s: %s", ie)
+                    self._insert_item_v4(_props, _vec, _id)
                 batch, vecs, ids = [], [], []
 
         if batch:
             for _props, _vec, _id in zip(batch, vecs, ids):
-                try:
-                    self._collection_v4.data.insert(properties=_props, vector=_vec)
-                except Exception as ie:
-                    logger.error("v4 per-item insert failed for %s: %s",  ie)
+                self._insert_item_v4(_props, _vec, _id)
+        logger.info("v4 upsert summary: total=%d inserted=%d skipped_short=%d skipped_dim=%d expected_dim=%s",
+                    total, inserted, skipped_short, skipped_dim, self._expected_dim)
 
     # --- v3 upsert -----------------------------------------------------------
     async def _upsert_v3(self, chunks: Sequence[Chunk], vectors: Sequence[Sequence[float]]) -> None:
         assert self._client_v3 is not None
         name = self.collection_name
+        skipped_short = 0
+        skipped_dim = 0
+        inserted = 0
+        total = len(chunks)
         with self._client_v3.batch(batch_size=self.batch_size) as batch:  # type: ignore[attr-defined]
             for ch, vec in zip(chunks, vectors):
                 props = _chunk_props(ch)
+                # chunk-length guard
+                if not _is_meaningful_text(props.get("text"), self._min_chunk_chars):
+                    skipped_short += 1
+                    continue
+                # vector-dimension guard
+                if self._expected_dim is None and isinstance(vec, (list, tuple)):
+                    self._expected_dim = len(vec)
+                if not isinstance(vec, (list, tuple)) or (self._expected_dim is not None and len(vec) != self._expected_dim):
+                    logger.warning("skip chunk due to vector dim mismatch: got=%s expected=%s (chunk_id=%s)",
+                                   getattr(ch, "id", None), self._expected_dim, getattr(ch, "id", None))
+                    skipped_dim += 1
+                    continue
                 _uid, _fid, cid = _chunk_identity(ch)
                 # Weaviate v3: use add_data_object with uuid to emulate upsert (replace-on-conflict not native)
                 try:
@@ -364,8 +546,11 @@ class WeaviateVectorRepository:
                         uuid=cid,
                         vector=list(vec),
                     )
+                    inserted += 1
                 except Exception as e:  # pragma: no cover
                     logger.warning("v3 batch add failed for %s: %s", cid, e)
+        logger.info("v3 upsert summary: total=%d inserted=%d skipped_short=%d skipped_dim=%d expected_dim=%s",
+                    total, inserted, skipped_short, skipped_dim, self._expected_dim)
     # --- Cleanup -------------------------------------------------------------
     async def close(self) -> None:
         logger.debug("closing weaviate client")

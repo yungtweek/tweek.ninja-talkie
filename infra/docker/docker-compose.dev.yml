@@ -113,7 +113,9 @@ services:
       ENABLE_MODULES: text2vec-openai
       ENABLE_API_BASED_MODULES: "${WEAVIATE_ENABLE_API_BASED_MODULES:-true}"
       DEFAULT_VECTORIZER_MODULE: text2vec-openai
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ENABLE_TOKENIZER_KAGOME_KR: "true"
+      ENABLE_TOKENIZER_KAGOME_JA: "true"
+      OPENAI_APIKEY: ${OPENAI_API_KEY}
       CLUSTER_HOSTNAME: weaviate
     volumes:
       - ./volumes/weaviate/data:/var/lib/weaviate
