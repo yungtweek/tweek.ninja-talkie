@@ -15,7 +15,17 @@ class ChunkingInput:
     extension: str | None = None
     page: int | None = None
 
-ChunkerMode = Literal["word", "char", "token", "markdown"]
+# Supported chunking modes across the application.
+#
+# - "word":  legacy word-based splitting (may be deprecated in favor of token-based).
+# - "char":  legacy character-level splitting.
+# - "token": default mode, aligned with the LLM tokenizer.
+# - "markdown": structure-aware Markdown chunking.
+ChunkMode = Literal["word", "char", "token", "markdown"]
+
+# Global default chunking mode used when a caller does not explicitly specify one.
+# Keeping this here avoids scattering hard-coded "token" literals across the codebase.
+DEFAULT_CHUNK_MODE: ChunkMode = "token"
 
 class BaseChunker(ABC):
     """Common interface for all chunkers.
@@ -29,7 +39,7 @@ class BaseChunker(ABC):
         overlap: Overlap size between adjacent chunks.
     """
 
-    mode: ChunkerMode  # 각 구현체가 가져야 하는 속성
+    mode: ChunkMode  # 각 구현체가 가져야 하는 속성
 
     @abstractmethod
     def chunk(

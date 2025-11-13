@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Literal, Awaitable, Callable, Any
 
+from index_worker.application.chunking.base import ChunkMode
 from index_worker.application.index_document import index_document, IndexResult
 from index_worker.domain.ports import VectorRepository
 from index_worker.domain.ports import MetadataRepo
@@ -17,7 +18,7 @@ class IndexDocumentCommand:
     raw_bytes: bytes
     # Optional params
     embedding_model: Optional[str] = None
-    chunk_mode: Literal["word", "char", "token"] = "token"
+    chunk_mode: ChunkMode = "token"
     chunk_size: int = 500
     overlap: int = 50
 
@@ -37,7 +38,7 @@ class IndexDocumentUseCase:
             metadata_repo: Optional[MetadataRepo] = None,
             emit_event: Optional[Callable[[dict[str, Any]], Awaitable[None]]] = None,
             default_embedding_model: Optional[str] = None,
-            default_chunk_mode: Literal["word", "char", "token"] = "token",
+            default_chunk_mode: ChunkMode = "token",
             default_chunk_size: int = 500,
             default_overlap: int = 50,
     ) -> None:

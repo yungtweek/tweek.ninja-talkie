@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Literal, cast, Awaitable, Callable, Optional
 
 from ..use_cases.index_document import IndexDocumentUseCase, IndexDocumentCommand
+from ..chunking.base import ChunkMode, DEFAULT_CHUNK_MODE
 
 @dataclass
 class IndexRequestHandler:
@@ -16,7 +17,7 @@ class IndexRequestHandler:
             filename=payload["filename"],
             raw_bytes=payload["raw_bytes"],
             embedding_model=payload.get("embedding_model"),
-            chunk_mode=cast(Literal["word", "char", "token"], payload.get("chunk_mode", "token")),
+            chunk_mode=cast(ChunkMode, payload.get("chunk_mode", DEFAULT_CHUNK_MODE)),
             chunk_size=payload.get("chunk_size", 500),
             overlap=payload.get("overlap", 50),
         )

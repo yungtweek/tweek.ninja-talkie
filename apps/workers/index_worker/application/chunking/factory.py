@@ -5,8 +5,7 @@ from index_worker.application.chunking.TokenChunker import TokenChunker
 # from index_worker.application.chunking.word import WordChunker
 # from index_worker.application.chunking.char import CharChunker
 # from index_worker.application.chunking.token import TokenChunker
-from index_worker.application.chunking.base import BaseChunker, ChunkerMode
-
+from index_worker.application.chunking.base import BaseChunker, ChunkMode, DEFAULT_CHUNK_MODE
 
 # supported chunkers
 _CHUNKER_BY_KEY: Final[Mapping[str, type[BaseChunker]]] = cast(
@@ -17,7 +16,7 @@ _CHUNKER_BY_KEY: Final[Mapping[str, type[BaseChunker]]] = cast(
     })
 )
 
-def _guess_mode_from_extension(ext: str | None) -> ChunkerMode:
+def _guess_mode_from_extension(ext: str | None) -> ChunkMode:
     """Infer chunker mode from file extension."""
     if not ext:
         return "token"
@@ -36,8 +35,8 @@ def _guess_mode_from_extension(ext: str | None) -> ChunkerMode:
 def build_chunker(
     *,
     extension: str | None = None,
-    mode: ChunkerMode | None = None,
-    default: ChunkerMode = "token",
+    mode: ChunkMode | None = None,
+    default: ChunkMode = DEFAULT_CHUNK_MODE,
 ) -> BaseChunker:
     """Return a chunker implementation based on mode/extension.
 
@@ -50,9 +49,6 @@ def build_chunker(
     # direct override
     if mode is None:
         mode = _guess_mode_from_extension(extension)
-
-    # fallback
-    mode = mode or default
 
     cls = _CHUNKER_BY_KEY.get(mode)
 

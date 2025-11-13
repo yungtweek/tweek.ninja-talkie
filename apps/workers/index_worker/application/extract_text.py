@@ -36,8 +36,6 @@ def extract_text(raw_bytes: bytes, filename: str) -> str:
         # --- Keep markdown extraction lightweight ---
         # Only strip clearly non-semantic blocks here and let the chunker
         # handle structural semantics (headers, lists, etc.).
-        # 1) Remove fenced code blocks (``` ... ```)
-        content = re.sub(r"```[\s\S]*?```", "", content)
         # 2) Remove HTML comments
         content = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
         # (Headings like `#`, `##` and list markers `-`, `*` etc. are preserved

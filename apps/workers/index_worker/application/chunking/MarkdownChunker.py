@@ -4,21 +4,15 @@ from datetime import UTC, datetime
 import hashlib
 from dataclasses import dataclass
 from typing import Sequence
+import logging
 
-from index_worker.application.chunking.base import BaseChunker, ChunkingInput, ChunkerMode
+from index_worker.application.chunking.base import BaseChunker, ChunkingInput, ChunkMode
+from index_worker.application.chunking.helpers import deterministic_id
 from index_worker.domain.entities import Chunk
 from index_worker.domain.values import ChunkText
 
+logger = logging.getLogger(__name__)
 
-def _deterministic_id(*parts: str) -> str:
-    """Build a deterministic identifier by hashing the given string parts."""
-    h = hashlib.sha1()
-    for p in parts:
-        if p is None:
-            p = ""
-        h.update(p.encode("utf-8"))
-        h.update(b"\x00")
-    return h.hexdigest()
 
 @dataclass
 class _SectionInfo:
@@ -27,7 +21,7 @@ class _SectionInfo:
 
 
 class MarkdownChunker(BaseChunker):
-    mode: ChunkerMode = "markdown"
+    mode: ChunkMode = "markdown"
 
     @staticmethod
     def _flush_buf(
@@ -40,6 +34,18 @@ class MarkdownChunker(BaseChunker):
         section_level: int | None,
     ) -> None:
         block = "\n".join(buf).strip()
+        # Debug logging to inspect flushed blocks (including code blocks)
+        # NOTE: This is primarily for development/debugging and can be lowered or removed later.
+        if buf:
+            logger.info(
+                "MarkdownChunker: flushing buffer",
+                extra={
+                    "lines": len(buf),
+                    "section_title": section_title,
+                    "section_level": section_level,
+                    "preview": block[:120],
+                },
+            )
         if block:
             blocks.append(block)
             block_section_titles.append(section_title)
@@ -147,8 +153,16 @@ class MarkdownChunker(BaseChunker):
             line = raw_line.rstrip("\n")
             stripped = line.strip()
 
+            logger.info(stripped)
             # fenced code block start/end
             if stripped.startswith("```") or stripped.startswith("~~~"):
+                logger.info(
+                    "MarkdownChunker: encountered fence line",
+                    extra={
+                        "line": line,
+                        "in_code_before": in_code,
+                    },
+                )
                 # entering a code block: flush any pending paragraph/content
                 if not in_code and buf:
                     self._flush_buf(
@@ -163,8 +177,22 @@ class MarkdownChunker(BaseChunker):
                 in_code = not in_code
                 buf.append(line)
 
+                logger.info(
+                    "MarkdownChunker: toggled code mode",
+                    extra={
+                        "in_code_after": in_code,
+                        "buf_len": len(buf),
+                    },
+                )
+
                 # closing fence -> flush code block as its own block
                 if not in_code:
+                    logger.info(
+                        "MarkdownChunker: flushing code block on fence close",
+                        extra={
+                            "buf_len": len(buf),
+                        },
+                    )
                     self._flush_buf(
                         buf,
                         blocks,
@@ -177,6 +205,13 @@ class MarkdownChunker(BaseChunker):
 
             # already inside a fenced code block: keep lines verbatim
             if in_code:
+                logger.info(
+                    "MarkdownChunker: inside code block line",
+                    extra={
+                        "line": line,
+                        "buf_len": len(buf),
+                    },
+                )
                 buf.append(line)
                 continue
 
@@ -280,7 +315,7 @@ class MarkdownChunker(BaseChunker):
                     offset_start = global_offset + local_start
                     offset_end = global_offset + local_end
 
-                    cid = _deterministic_id(
+                    cid = deterministic_id(
                         inp.file_id,
                         str(idx),
                         chunk_text_str[:64],

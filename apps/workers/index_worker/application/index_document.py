@@ -5,11 +5,9 @@ import logging
 from typing import TypedDict, Optional, Literal, Awaitable, Callable, Any
 from datetime import datetime, UTC
 
-from index_worker.application.chunk import chunk_text
-from index_worker.application.chunking.base import ChunkingInput
+from index_worker.application.chunking.base import ChunkingInput, ChunkMode
 from index_worker.application.chunking.factory import build_chunker
 from index_worker.application.extract_text import clean_text, extract_text
-from index_worker.application.chunking.MarkdownChunker import MarkdownChunker
 from index_worker.domain.ports import Embedder, MetadataRepo, VectorRepository
 
 logger = logging.getLogger(__name__)
@@ -50,7 +48,7 @@ class IndexResult(TypedDict, total=False):
     file_id: str
     filename: str
     user_id: str
-    mode: Literal["word", "char", "token"]
+    mode: ChunkMode
     chunk_size: int
     overlap: int
 
@@ -67,7 +65,7 @@ async def index_document(
     metadata_repo: Optional[MetadataRepo] = None,
     emit_event: Optional[Callable[[dict[str, Any]], Awaitable[None]]] = None,
     embedding_model: Optional[str] = None,
-    chunk_mode: Literal["word", "char", "token"] = "token",
+    chunk_mode: ChunkMode,
     chunk_size: int = 500,
     overlap: int = 50,
 ) -> IndexResult:
@@ -85,62 +83,38 @@ async def index_document(
     if not filename:
         raise ValueError("filename is required for type inference")
 
+    effective_mode: ChunkMode = chunk_mode
+
     try:
+        filename_lower = filename.lower()
+        if filename_lower.endswith(".md"):
+            effective_mode = "markdown"
         # 1) Extract
         text = extract_text(raw_bytes, filename)
         if not text or not text.strip():
-            return _done(False, t0, user_id, file_id, filename, chunk_mode, chunk_size, overlap, error="No extractable text")
+            return _done(False, t0, user_id, file_id, filename, effective_mode, chunk_size, overlap, error="No extractable text")
 
         # 2) Clean
         text = clean_text(text)
         if not text:
-            return _done(False, t0, user_id, file_id, filename, chunk_mode, chunk_size, overlap, error="Empty after cleaning")
+            return _done(False, t0, user_id, file_id, filename, effective_mode, chunk_size, overlap, error="Empty after cleaning")
 
         # 3) Chunk
-        filename_lower = filename.lower()
-        is_markdown = filename_lower.endswith(".md")
+        chunker = build_chunker(mode=effective_mode)
 
-
-        if is_markdown:
-            # ✅ 신규 로직: 팩토리 기반 MarkdownChunker
-            chunker = build_chunker(mode="markdown")
-
-            chunks = chunker.chunk(
-                ChunkingInput(
-                    text=text,
-                    file_id=file_id,
-                    user_id=user_id,
-                    filename=filename,
-                ),
-                chunk_size=chunk_size,
-                overlap=overlap,
-            )
-            mode_for_result = "markdown"
-        elif chunk_mode == "token":
-            chunker = build_chunker(mode="token")
-            chunks = chunker.chunk(
-                ChunkingInput(
-                    text=text,
-                    file_id=file_id,
-                    user_id=user_id,
-                    filename=filename,
-                ),
-                chunk_size=chunk_size,
-                overlap=overlap,
-            )
-        else:
-            chunks = chunk_text(
+        chunks = chunker.chunk(
+            ChunkingInput(
                 text=text,
                 file_id=file_id,
                 user_id=user_id,
                 filename=filename,
-                chunk_size=chunk_size,
-                overlap=overlap,
-                mode=chunk_mode,
-            )
-            mode_for_result = chunk_mode
+            ),
+            chunk_size=chunk_size,
+            overlap=overlap,
+        )
+
         if not chunks:
-            return _done(False, t0, user_id, file_id, filename, chunk_mode, chunk_size, overlap, error="No chunks produced")
+            return _done(False, t0, user_id, file_id, filename, effective_mode, chunk_size, overlap, error="No chunks produced")
 
         # 3.5) Update metadata: chunk count & indexed_at
         if metadata_repo:
@@ -151,8 +125,8 @@ async def index_document(
                     status="indexed",
                     chunk_count=len(chunks),
                     indexed_at=datetime.now(UTC),
-                    meta_path=["status"],
-                    meta_value="indexed",
+                    meta={"status": "indexed",
+                          "chunk_mode": effective_mode},
                 )
                 await _safe_emit(emit_event, "file.status.changed", {
                     "id": file_id,
@@ -172,7 +146,7 @@ async def index_document(
         # })
         vectors = await embedder.embed_batch([c.text.text for c in chunks])
         if not vectors or len(vectors) != len(chunks):
-            return _done(False, t0, user_id, file_id, filename, chunk_mode, chunk_size, overlap, error="Embedding size mismatch")
+            return _done(False, t0, user_id, file_id, filename, effective_mode, chunk_size, overlap, error="Embedding size mismatch")
 
         # 5) Upsert to vector store (idempotent by chunk_id)
         await vector_repo.upsert(chunks, vectors)
@@ -197,7 +171,7 @@ async def index_document(
             except Exception as me:
                 logger.warning("metadata update (vectorized) failed: %s", me)
 
-        return _done(True, t0, user_id, file_id, filename, chunk_mode, chunk_size, overlap, chunks=len(chunks))
+        return _done(True, t0, user_id, file_id, filename, effective_mode, chunk_size, overlap, chunks=len(chunks))
 
     except Exception as e:
         logger.exception("index_document failed: %s", e)
@@ -210,7 +184,7 @@ async def index_document(
             "id": file_id,
             "message": str(e),
         })
-        return _done(False, t0, user_id, file_id, filename, chunk_mode, chunk_size, overlap, error=str(e))
+        return _done(False, t0, user_id, file_id, filename, effective_mode, chunk_size, overlap, error=str(e))
 
 
 # --- helpers ----------------------------------------------------------------
@@ -221,7 +195,7 @@ def _done(
     user_id: str,
     file_id: str,
     filename: str,
-    mode: Literal["word", "char", "token"],
+    mode: ChunkMode,
     chunk_size: int,
     overlap: int,
     *,

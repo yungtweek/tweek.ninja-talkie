@@ -6,25 +6,16 @@ import tiktoken
 from dataclasses import dataclass
 from typing import Sequence
 
-from index_worker.application.chunk import _normalize_text
-from index_worker.application.chunking.base import BaseChunker, ChunkingInput, ChunkerMode
+from index_worker.application.chunking.base import BaseChunker, ChunkingInput, ChunkMode
+from index_worker.application.chunking.helpers import deterministic_id, normalize_text
 from index_worker.domain.entities import Chunk
 from index_worker.domain.values import ChunkText
 
 
-def _deterministic_id(*parts: str) -> str:
-    """Build a deterministic identifier by hashing the given string parts."""
-    h = hashlib.sha1()
-    for p in parts:
-        if p is None:
-            p = ""
-        h.update(p.encode("utf-8"))
-        h.update(b"\x00")
-    return h.hexdigest()
 
 
 class TokenChunker(BaseChunker):
-    mode: ChunkerMode = "token"
+    mode: ChunkMode = "token"
 
     def chunk(
         self,
@@ -58,7 +49,7 @@ class TokenChunker(BaseChunker):
             overlap = max(0, chunk_size // 5)
 
         # Pre-normalize text to improve tokenizer stability
-        norm = _normalize_text(text)
+        norm = normalize_text(text)
         if not norm:
             return []
 
@@ -82,7 +73,7 @@ class TokenChunker(BaseChunker):
                 continue
 
             # Derive a deterministic id from file_id, index, and text edges
-            cid = _deterministic_id(
+            cid = deterministic_id(
                 file_id,
                 str(idx),
                 chunk_text_str[:64],
