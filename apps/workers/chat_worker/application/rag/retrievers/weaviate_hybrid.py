@@ -262,9 +262,10 @@ class WeaviateHybridRetriever(BaseRetriever):
                     return_metadata=wvc.query.MetadataQuery(score=True, distance=True),
                     return_properties=["filename", "page", "chunk_index", "user_id", "file_id", "chunk_id", text_key],
                 )
-                return items_to_docs(list(res2.objects or []), text_key)
+                docs = items_to_docs(list(res2.objects or []), text_key)
+                return RetrieveResult(docs=docs, query=query, top_k=k, filters=dict(filters) if filters else None)
             except Exception:
-                return []
+                    return []
 
         log_items(items, logger)
 
