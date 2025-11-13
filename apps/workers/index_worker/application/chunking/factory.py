@@ -1,6 +1,7 @@
 from typing import Mapping, Type, Literal, cast, Final
 
 from index_worker.application.chunking.MarkdownChunker import MarkdownChunker
+from index_worker.application.chunking.TokenChunker import TokenChunker
 # from index_worker.application.chunking.word import WordChunker
 # from index_worker.application.chunking.char import CharChunker
 # from index_worker.application.chunking.token import TokenChunker
@@ -12,6 +13,7 @@ _CHUNKER_BY_KEY: Final[Mapping[str, type[BaseChunker]]] = cast(
     dict[str, type[BaseChunker]],
     cast(object, {
         "markdown": MarkdownChunker,
+        "token": TokenChunker,
     })
 )
 

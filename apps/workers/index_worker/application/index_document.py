@@ -116,6 +116,18 @@ async def index_document(
                 overlap=overlap,
             )
             mode_for_result = "markdown"
+        elif chunk_mode == "token":
+            chunker = build_chunker(mode="token")
+            chunks = chunker.chunk(
+                ChunkingInput(
+                    text=text,
+                    file_id=file_id,
+                    user_id=user_id,
+                    filename=filename,
+                ),
+                chunk_size=chunk_size,
+                overlap=overlap,
+            )
         else:
             chunks = chunk_text(
                 text=text,
