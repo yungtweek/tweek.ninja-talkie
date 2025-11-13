@@ -33,10 +33,15 @@ def extract_text(raw_bytes: bytes, filename: str) -> str:
 
     elif filename.endswith(".md"):
         content = raw_bytes.decode("utf-8", errors="ignore")
-        # Remove Markdown syntax and artifacts
-        content = re.sub(r'!\[.*?]\(.*?\)', '', content)
-        content = re.sub(r'\[.*?]\(.*?\)', '', content)
-        content = re.sub(r'[`*_>#-]', '', content)
+        # --- Keep markdown extraction lightweight ---
+        # Only strip clearly non-semantic blocks here and let the chunker
+        # handle structural semantics (headers, lists, etc.).
+        # 1) Remove fenced code blocks (``` ... ```)
+        content = re.sub(r"```[\s\S]*?```", "", content)
+        # 2) Remove HTML comments
+        content = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
+        # (Headings like `#`, `##` and list markers `-`, `*` etc. are preserved
+        #  so that downstream Markdown-aware chunkers can use them.)
         return content.strip()
 
     else:
@@ -64,8 +69,22 @@ def clean_text(text: str) -> str:
     # Normalize newline characters
     text = re.sub(r"\r\n|\r", "\n", text)  # Normalize newline characters
 
-    # Collapse multiple spaces and newlines
-    text = re.sub(r"\n{2,}", "\n", text)
-    text = re.sub(r"\s+", " ", text)
+    # --- Preserve structural newlines but clean intra-line whitespace ---
+    # Split into lines, trim extra spaces/tabs per line
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.split("\n")]
+
+    # Collapse 3+ consecutive blank lines down to at most 2
+    normalized_lines = []
+    blank_count = 0
+    for line in lines:
+        if line == "":
+            blank_count += 1
+            if blank_count > 2:
+                continue
+        else:
+            blank_count = 0
+        normalized_lines.append(line)
+
+    text = "\n".join(normalized_lines)
 
     return text.strip()

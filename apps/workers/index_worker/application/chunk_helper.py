@@ -5,9 +5,7 @@ Chunking utilities for the indexing worker.
 - Produces deterministic chunk IDs for idempotent re-processing.
 """
 
-import uuid
 import hashlib
-import tiktoken
 
 from datetime import datetime, UTC
 from typing import Literal
@@ -92,52 +90,6 @@ def chunk_text(
     chunks: list[Chunk] = []
     idx = 0
 
-    # Token-based chunking using tiktoken (OpenAI cl100k_base)
-    if mode == "token":
-        # Use a stable tokenizer to ensure consistent token boundaries
-        enc = tiktoken.get_encoding("cl100k_base")
-        tokens = enc.encode(norm)
-        total = len(tokens)
-        # Sliding window step preserves the specified overlap
-        step = chunk_size - overlap
-        for start in range(0, total, step):
-            end = min(start + chunk_size, total)
-            sub_tokens = tokens[start:end]
-            chunk_text_str = enc.decode(sub_tokens).strip()
-            if not chunk_text_str:
-                continue
-
-            # Derive a deterministic id from file_id, index, and text edges
-            cid = _deterministic_id(file_id, str(idx), chunk_text_str[:64], chunk_text_str[-64:])
-
-            # Minimal, searchable metadata attached to each chunk
-            meta = {
-                "file_id": file_id,
-                "user_id": user_id,
-                "filename": filename,
-                "mode": mode,
-                "offset_start": str(start),
-                "offset_end": str(end),
-                "total_units": str(total),
-                "unit": "token",
-                "created_at": datetime.now(UTC),
-            }
-            if page is not None:
-                meta["page"] = str(page)
-
-            chunks.append(
-                Chunk(
-                    id=cid,
-                    document_id=file_id,
-                    order=idx,
-                    text=ChunkText(chunk_text_str),
-                    embedding=None,
-                    meta=meta,
-                )
-            )
-            idx += 1
-        return chunks
-
     # word/char mode: split by spaces or into characters
     units = norm.split() if mode == "word" else list(norm)
     total = len(units)
@@ -173,7 +125,7 @@ def chunk_text(
             Chunk(
                 id=cid,
                 document_id=file_id,
-                order=idx,
+                chunk_index=idx,
                 text=ChunkText(chunk_text_str),
                 embedding=None,
                 meta=meta,
