@@ -5,7 +5,7 @@ import logging
 from typing import TypedDict, Optional, Literal, Awaitable, Callable, Any
 from datetime import datetime, UTC
 
-from index_worker.application.chunk_helper import chunk_text
+from index_worker.application.chunk import chunk_text
 from index_worker.application.chunking.base import ChunkingInput
 from index_worker.application.chunking.factory import build_chunker
 from index_worker.application.extract_text import clean_text, extract_text

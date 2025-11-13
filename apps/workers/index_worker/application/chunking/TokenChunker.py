@@ -6,7 +6,7 @@ import tiktoken
 from dataclasses import dataclass
 from typing import Sequence
 
-from index_worker.application.chunk_helper import _normalize_text
+from index_worker.application.chunk import _normalize_text
 from index_worker.application.chunking.base import BaseChunker, ChunkingInput, ChunkerMode
 from index_worker.domain.entities import Chunk
 from index_worker.domain.values import ChunkText
