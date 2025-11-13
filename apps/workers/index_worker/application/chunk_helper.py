@@ -129,7 +129,7 @@ def chunk_text(
                 Chunk(
                     id=cid,
                     document_id=file_id,
-                    order=idx,
+                    chunk_index=idx,
                     text=ChunkText(chunk_text_str),
                     embedding=None,
                     meta=meta,
@@ -173,7 +173,7 @@ def chunk_text(
             Chunk(
                 id=cid,
                 document_id=file_id,
-                order=idx,
+                chunk_index=idx,
                 text=ChunkText(chunk_text_str),
                 embedding=None,
                 meta=meta,

@@ -2,7 +2,9 @@ import asyncpg
 from datetime import datetime
 from index_worker.domain.ports import MetadataRepo
 import json
-from typing import Optional
+from typing import Optional, Sequence
+
+from index_worker.domain.entities import Chunk
 
 
 class PgMetadataRepo(MetadataRepo):
@@ -108,3 +110,40 @@ class PgMetadataRepo(MetadataRepo):
                      WHERE id = $1"""
         async with self.pool.acquire() as conn:
             await conn.execute(query, file_id, *vals)
+
+    async def save_chunks(self, chunks: Sequence[Chunk]) -> None:
+        """
+        Persist a batch of chunking results for debugging / inspection.
+
+        This does not interact with the vector index; it simply records the
+        logical chunks that were produced (one row per chunk).
+        """
+        if not chunks:
+            return
+
+        rows = []
+        for chunk in chunks:
+            # Chunk.text is a value object (ChunkText); fall back to str() just in case.
+            text_value = getattr(chunk.text, "text", None)
+            if text_value is None:
+                text_value = str(chunk.text)
+
+            rows.append(
+                (
+                    chunk.id,
+                    chunk.document_id,
+                    chunk.chunk_index,
+                    text_value,
+                    json.dumps(chunk.meta or {}),
+                )
+            )
+
+        async with self.pool.acquire() as conn:
+            await conn.executemany(
+                """
+                INSERT INTO file_chunks (id, file_id, chunk_index, text, meta)
+                VALUES ($1, $2, $3, $4, $5)
+                """,
+                rows,
+            )
+

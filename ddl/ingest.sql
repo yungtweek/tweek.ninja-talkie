@@ -140,6 +140,36 @@ COMMENT ON TABLE file_access_log IS 'Audit log of file access and actions (uploa
 COMMENT ON COLUMN file_access_log.action IS 'Action performed by the user: upload, download, delete, etc.';
 COMMENT ON COLUMN file_access_log.user_agent IS 'HTTP user agent string from the request.';
 
+DROP TABLE IF EXISTS file_chunks CASCADE ;
+CREATE TABLE file_chunks
+(
+    id        TEXT PRIMARY KEY,                                -- chunk identifier (matches domain Chunk.id)
+    file_id   UUID NOT NULL,                                   -- FK → file_metadata.id
+    chunk_index   INTEGER NOT NULL,                                -- stable ordering within the file
+    text      TEXT    NOT NULL,                                -- chunk text content
+    meta      JSONB   DEFAULT '{}'::jsonb,                     -- raw chunk metadata (section, offsets, etc.)
+    created_at TIMESTAMPTZ DEFAULT now(),
+
+    CONSTRAINT fk_file_chunks_file
+        FOREIGN KEY (file_id)
+            REFERENCES file_metadata (id)
+            ON DELETE CASCADE
+);
+
+-- Documentation: file_chunks
+COMMENT ON TABLE file_chunks IS 'Logical text chunks produced during indexing (debug/inspection + re-embedding source).';
+COMMENT ON COLUMN file_chunks.file_id IS 'FK → file_metadata.id (the file this chunk belongs to).';
+COMMENT ON COLUMN file_chunks.chunk_index IS 'Stable order of the chunk within the file.';
+COMMENT ON COLUMN file_chunks.text IS 'Chunk text used for embedding / search.';
+COMMENT ON COLUMN file_chunks.meta IS 'JSONB metadata: section_title, section_level, offsets, block_id, page, etc.';
+
+-- Common query optimizations for chunks
+CREATE INDEX IF NOT EXISTS idx_file_chunks_file_order
+    ON file_chunks (file_id, chunk_index);
+
+CREATE INDEX IF NOT EXISTS idx_file_chunks_file_created
+    ON file_chunks (file_id, created_at DESC);
+
 -- Accelerate analytics on access logs
 CREATE INDEX IF NOT EXISTS idx_file_access_log_file_action
     ON file_access_log (file_id, action, accessed_at DESC);

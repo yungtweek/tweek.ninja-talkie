@@ -14,7 +14,7 @@ class Document:
 class Chunk:
     id: str
     document_id: str
-    order: int
+    chunk_index: int
     text: ChunkText
     embedding: Embedding | None = None
     meta: dict[str, str] = field(default_factory=dict)

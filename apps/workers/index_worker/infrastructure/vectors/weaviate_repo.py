@@ -164,7 +164,7 @@ def _chunk_props(chunk: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
             "text": text_val,
             "text_tri": text_val,
             "filename_kw": _normalize_filename(filename),
-            "chunk_index": int(getattr(chunk, "order", 0)),
+            "chunk_index": int(getattr(chunk, "chunk_index", 0)),
             "page": page,
         }
 

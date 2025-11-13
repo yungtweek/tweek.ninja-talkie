@@ -296,7 +296,6 @@ class MarkdownChunker(BaseChunker):
                         "offset_end": str(offset_end),
                         "total_units": str(total_words),
                         "unit": "word",
-                        "created_at": datetime.now(UTC),
                         "block_id": str(block_idx),
                         "block_local_start": str(local_start),
                         "block_local_end": str(local_end),
@@ -314,7 +313,7 @@ class MarkdownChunker(BaseChunker):
                         Chunk(
                             id=cid,
                             document_id=inp.file_id,
-                            order=idx,
+                            chunk_index=idx,
                             text=ChunkText(chunk_text_str),
                             embedding=None,
                             meta=meta,

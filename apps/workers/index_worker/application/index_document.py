@@ -5,8 +5,11 @@ import logging
 from typing import TypedDict, Optional, Literal, Awaitable, Callable, Any
 from datetime import datetime, UTC
 
-from index_worker.application.extract_text import clean_text, extract_text  # expects (raw_bytes, filename)
-from index_worker.application.chunking import chunk_text
+from index_worker.application.chunk_helper import chunk_text
+from index_worker.application.chunking.base import ChunkingInput
+from index_worker.application.chunking.factory import build_chunker
+from index_worker.application.extract_text import clean_text, extract_text
+from index_worker.application.chunking.MarkdownChunker import MarkdownChunker
 from index_worker.domain.ports import Embedder, MetadataRepo, VectorRepository
 
 logger = logging.getLogger(__name__)
@@ -94,21 +97,43 @@ async def index_document(
             return _done(False, t0, user_id, file_id, filename, chunk_mode, chunk_size, overlap, error="Empty after cleaning")
 
         # 3) Chunk
-        chunks = chunk_text(
-            text=text,
-            file_id=file_id,
-            user_id=user_id,
-            filename=filename,
-            chunk_size=chunk_size,
-            overlap=overlap,
-            mode=chunk_mode,
-        )
+        filename_lower = filename.lower()
+        is_markdown = filename_lower.endswith(".md")
+
+
+        if is_markdown:
+            # ✅ 신규 로직: 팩토리 기반 MarkdownChunker
+            chunker = build_chunker(mode="markdown")
+
+            chunks = chunker.chunk(
+                ChunkingInput(
+                    text=text,
+                    file_id=file_id,
+                    user_id=user_id,
+                    filename=filename,
+                ),
+                chunk_size=chunk_size,
+                overlap=overlap,
+            )
+            mode_for_result = "markdown"
+        else:
+            chunks = chunk_text(
+                text=text,
+                file_id=file_id,
+                user_id=user_id,
+                filename=filename,
+                chunk_size=chunk_size,
+                overlap=overlap,
+                mode=chunk_mode,
+            )
+            mode_for_result = chunk_mode
         if not chunks:
             return _done(False, t0, user_id, file_id, filename, chunk_mode, chunk_size, overlap, error="No chunks produced")
 
         # 3.5) Update metadata: chunk count & indexed_at
         if metadata_repo:
             try:
+                await metadata_repo.save_chunks(chunks)
                 await metadata_repo.update_index_status(
                     file_id,
                     status="indexed",

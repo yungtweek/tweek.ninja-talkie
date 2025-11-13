@@ -106,3 +106,14 @@ class MetadataRepo(ABC):
         Optionally persist the number of deleted vectors and a free-form reason for auditability.
         """
         ...
+
+    @abstractmethod
+    async def save_chunks(self, chunks: Sequence[Chunk]) -> None:
+        """
+        Persist a batch of logical chunks for a file.
+
+        Implementations may choose the underlying storage (e.g., Postgres, another SQL/NoSQL store),
+        but should persist enough information (id, file_id, chunk_index, text, meta) to allow
+        debugging, inspection, and future re-embedding of the same chunk set.
+        """
+        ...

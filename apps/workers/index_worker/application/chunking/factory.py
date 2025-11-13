@@ -1,6 +1,6 @@
 from typing import Mapping, Type, Literal, cast, Final
 
-from index_worker.application.chunking import MarkdownChunker
+from index_worker.application.chunking.MarkdownChunker import MarkdownChunker
 # from index_worker.application.chunking.word import WordChunker
 # from index_worker.application.chunking.char import CharChunker
 # from index_worker.application.chunking.token import TokenChunker
