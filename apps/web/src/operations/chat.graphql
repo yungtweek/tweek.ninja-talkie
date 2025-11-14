@@ -33,7 +33,7 @@ fragment ChatSessionMeta on ChatSession {
     updatedAt
 }
 
-query ChatSessionList($first: Int = 20, $after: String) {
+query ChatSessionList($first: Int = 50, $after: String) {
   chatSessionList(first: $first, after: $after) {
     edges {
       node {
