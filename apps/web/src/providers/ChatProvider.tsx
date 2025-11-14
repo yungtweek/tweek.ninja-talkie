@@ -109,6 +109,11 @@ export default function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    // If we navigated away from the newly created session, stop treating it as special
+    if (createdSidRef.current && routeSessionId && createdSidRef.current !== routeSessionId) {
+      createdSidRef.current = null;
+    }
+
     // Entering /chat (empty session): abort previous requests, reset message store, and clear stream target
     if (!routeSessionId) {
       currentFetchAC.current?.abort();
