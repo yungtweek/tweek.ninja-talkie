@@ -47,7 +47,7 @@ export default function TalkieLayout({
             <nav aria-label="Session navigation">{sidebar}</nav>
           </aside>
           {/* Landmark: Main content area (page-level) */}
-          <main id="main" className={clsx(styles.main, styles.wrap)}>
+          <main id="main" tabIndex={-1} className={clsx(styles.main, styles.wrap)}>
             {children}
           </main>
         </div>
