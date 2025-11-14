@@ -34,7 +34,7 @@ async def llm_runner(
         cancel_event: Optional[asyncio.Event] = None,
         hard_timeout_sec: Optional[float] = None,
         on_event: Optional[Callable[[str, dict], Awaitable[None]]] = None,
-        on_done: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_done: Optional[Callable[..., Awaitable[Any]]] = None,
         on_error: Optional[Callable[[str], Awaitable[None]]] = None,
 ) -> str | None:
     """

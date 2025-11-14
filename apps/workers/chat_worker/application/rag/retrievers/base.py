@@ -102,7 +102,7 @@ class BaseRetriever(ABC):
         self.ctx = ctx
 
     @abstractmethod
-    async def invoke(
+    def invoke(
         self,
         query: str,
         *,

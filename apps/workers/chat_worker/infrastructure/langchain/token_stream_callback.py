@@ -32,17 +32,17 @@ class TokenStreamCallback(AsyncCallbackHandler):
 
         # Ensure safe cross-thread invocation from llama.cpp callbacks
 
-    def on_chat_model_start(
+    async def on_chat_model_start(
             self,
-            *args,
+            *args: Any,
             **kwargs: Any,
-    ):
+    ) -> None:
         # LangChain 0.2+ emits this event when an LLM starts
         # We don't need to do anything special here, just silence the warning
-        pass
+        return None
 
 
-    def on_llm_new_token(self, token: str, **kwargs):
+    async def on_llm_new_token(self, token: str, **kwargs):
         tags = kwargs.get("tags") or []
         if self.allowed_tags and not any(t in self.allowed_tags for t in tags):
             return
@@ -58,7 +58,7 @@ class TokenStreamCallback(AsyncCallbackHandler):
         )
         self._i += 1
 
-    def on_llm_end(self, response, **kwargs):
+    async def on_llm_end(self, response, **kwargs):
         tags = kwargs.get("tags") or []
         if self.allowed_tags and not any(t in self.allowed_tags for t in tags):
             return
@@ -70,7 +70,7 @@ class TokenStreamCallback(AsyncCallbackHandler):
             self._loop,
         )
 
-    def on_llm_error(self, error: BaseException, **kwargs):
+    async def on_llm_error(self, error: BaseException, **kwargs):
         if self._ended:
             return
         self._ended = True

@@ -24,7 +24,7 @@ class WeaviateNearTextRetriever(BaseRetriever):
             top_k: int | None = None,
             filters: Mapping[str, Any] | None = None,
             **kwargs: Any,
-    ) -> RetrieveResult | list:
+    ) -> RetrieveResult:
         logger.info(f"[invoke] query={query} top_k={top_k} filters={filters}")
         ctx = getattr(self, "_ctx", None)
         if ctx is None:

@@ -28,7 +28,7 @@ Schema (expected):
 """
 from __future__ import annotations
 
-from typing import Sequence, List
+from typing import Literal, Sequence, List
 import time
 from datetime import timezone
 
@@ -159,6 +159,14 @@ class PostgresHistoryRepository(HistoryRepository):
             }
             turns.append(item)
         return turns
+
+        # return await super().append(user_id, session_id, role, content)
+
+    # TODO
+    async def append(self, user_id: str, session_id: str, role: Literal['system'] | Literal['user'] | Literal['assistant'], content: str) -> None:
+        return None
+        # return await super().append(user_id, session_id, role, content)
+
 
     # --- Summary management (optional) ---
 

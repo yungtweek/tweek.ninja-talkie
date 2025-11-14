@@ -22,15 +22,15 @@ class RagConfig(BaseModel):
     """
     weaviate_url: Optional[str] = None
     weaviate_api_key: Optional[str] = None
-    collection: Optional[str] = None
-    text_key: Optional[str] = "content"
+    collection: str = "Chunks"
+    text_key: str = "text"
     embedding_model: Optional[str] = None
 
-    top_k: Optional[int] = None          # RAG_TOP_K
-    mmq: Optional[int] = None            # RAG_MMQ
-    max_context: Optional[int] = None    # RAG_MAX_CONTEXT
-    search_type: Optional[WeaviateSearchType] = WeaviateSearchType.HYBRID
-    alpha: Optional[float] = 0.6   # hybrid search weighting (0.0 = BM25 only, 1.0 = vector only)
+    top_k: int = 10          # RAG_TOP_K
+    mmq: int = 3            # RAG_MMQ
+    max_context: int = 3500    # RAG_MAX_CONTEXT
+    search_type: WeaviateSearchType = WeaviateSearchType.HYBRID
+    alpha: float = 0.6   # hybrid search weighting (0.0 = BM25 only, 1.0 = vector only)
     alpha_multi_strong_max: Optional[float] = 0.45  # multi strong hits → limit keyword bias
     alpha_single_strong_min: Optional[float] = 0.55  # single strong hit → favor vector slightly
     alpha_weak_hit_min: Optional[float] = 0.30       # weak hits → prioritize vector
@@ -38,7 +38,7 @@ class RagConfig(BaseModel):
 
     # ── Retrieval/Scoring knobs
     fusion_type: Optional[str] = "relative"  # "relative" | "ranked" | "default"; used by hybrid retriever
-    bm25_query_properties: list[str] = ["content", "text_tri", "filename", "filename_kw"]  # "content" will be rewritten to text_key in validator
+    bm25_query_properties: list[str] = ["text", "text_tri", "filename", "filename_kw"]  # "content" will be rewritten to text_key in validator
 
     # ── Query normalization / token exclude (Korean-focused)
     normalize_nfc: bool = True
@@ -72,12 +72,12 @@ class RagConfig(BaseModel):
 
 class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
-    DB_URL: str | None = None
+    DB_URL: str | None = Field(default=None, description="dsn is required")
     LOG_LEVEL: str = "DEBUG"
     NOISY_LEVEL: str = "WARNING"
 
     APP_NAME: str | None = "chat_worker"
-    WEAVIATE_URL: str | None = Field(..., description="WEAVIATE_URL is required")
+    WEAVIATE_URL: str | None = Field(default=None, description="WEAVIATE_URL is required")
     WEAVIATE_API_KEY: Optional[str] = None
     WEAVIATE_COLLECTION: str = "Chunks"
     BATCH_SIZE: int = 64
@@ -92,9 +92,9 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.7
     LLM_TIMEOUT_S: int | None = 90
 
-    MAX_CTX_TOKENS: int  # 모델 컨텍스트 예산
-    MAX_HISTORY_TURNS: int  # 최근 N턴
-    SUMMARIZE_THRESHOLD: int
+    MAX_CTX_TOKENS: int | None = None  # 모델 컨텍스트 예산
+    MAX_HISTORY_TURNS: int | None = None # 최근 N턴
+    SUMMARIZE_THRESHOLD: int | None = None
 
     REDIS_URL: str = "redis://localhost:6379"
     KAFKA_BOOTSTRAP: str = "localhost:29092"

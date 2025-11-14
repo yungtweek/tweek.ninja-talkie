@@ -143,7 +143,7 @@ class MetricsCallback(AsyncCallbackHandler):
             logger.warning("metrics persist failed: %s", e)
 
     # -------- LLM lifecycle hooks --------
-    def on_chat_model_start(
+    async def on_chat_model_start(
             self,
             *args,
             **kwargs: Any,
@@ -237,7 +237,7 @@ class MetricsCallback(AsyncCallbackHandler):
         if run_id:
             self._tracked_run_ids.discard(str(run_id))
 
-    async def on_llm_error(self, error: Exception, **kwargs: Any) -> None:
+    async def on_llm_error(self, error: BaseException, **kwargs: Any) -> None:
         run_id = kwargs.get("run_id")
         if run_id and str(run_id) not in self._tracked_run_ids:
             return

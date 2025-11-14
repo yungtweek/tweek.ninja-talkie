@@ -108,6 +108,8 @@ async def main():
     pool = await create_pg_pool(settings.DB_URL)
 
     # Repository and model clients
+    if pool is None:
+        raise 
     metrics_repo = PostgresMetricsRepo(pool)
     chat_repo = PostgresChatRepo(pool)
     history_repo = PostgresHistoryRepository(pool)
@@ -119,7 +121,7 @@ async def main():
     stream_service = StreamService(redis)
     # History service builds context windows (system + recent turns)
     system_prompt = "You are Talkie, an assistant that answers briefly."
-    history_service = HistoryService(history_repo, system_prompt, settings.MAX_CTX_TOKENS, settings.MAX_HISTORY_TURNS)
+    history_service = HistoryService(history_repo, system_prompt, settings.MAX_CTX_TOKENS)
     weaviate_client = await get_client()
     embeddings = OpenAIEmbeddings(model=settings.EMBEDDING_MODEL)
     pipeline = RagPipeline(
@@ -155,7 +157,12 @@ async def main():
                 break
             # Parse inbound Kafka message into typed request
             try:
-                req = ChatRequest.model_validate_json(msg.value.decode())
+                value = msg.value
+                if value is None:
+                    log.error("❌ Received Kafka message with empty value: key=%s, topic=%s, partition=%s, offset=%s",
+                              msg.key, msg.topic, msg.partition, msg.offset)
+                    continue
+                req = ChatRequest.model_validate_json(value.decode())
             except Exception as e:
                 print(f"❌ bad payload: {e}")
                 continue

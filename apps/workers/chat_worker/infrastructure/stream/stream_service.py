@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from logging import getLogger
 import time
 from dataclasses import dataclass
 from typing import AsyncIterator, Iterable, Literal, Optional, Any, Dict, Callable, Awaitable, cast
 
-from charset_normalizer.md import getLogger
 from redis.asyncio import Redis
 
 logger = getLogger(__name__)
@@ -145,10 +145,11 @@ class StreamService:
         }
         if add_ts:
             fields["ts"] = str(int(time.time() * 1000))
+            
         # Use approximate trimming for performance
         sid: str = await redis.xadd(
             stream_key(job_id, user_id),
-            fields,
+            fields, # type: ignore[arg-type]
             maxlen=maxlen_approx,
             approximate=True,
         )

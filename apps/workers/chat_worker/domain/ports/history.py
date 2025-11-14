@@ -31,18 +31,25 @@ class HistoryRepository(Protocol):
         Load the most recent chat turns up to the given limit.
         Ordered chronologically (oldest → newest).
         """
+        ...
+
     async def load_all(self, user_id: str, session_id: str) -> Sequence[Turn]:
         """
         Load the full conversation history for a given session.
         May be used for summarization or analytics.
         """
+        ...
+
     async def append(self, user_id: str, session_id: str, role: Role, content: str) -> None:
         """
         Append a new message (user or assistant) to the session history.
         Implementations should preserve insertion order and timestamps.
         """
+        ...
+
     async def replace_summary(self, user_id: str, session_id: str, summary: str) -> None:
         """
         Replace or update the session summary text.
         Used after summarization runs to compress long histories.
         """
+        ...

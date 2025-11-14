@@ -54,7 +54,7 @@ class WeaviateHybridRetriever(BaseRetriever):
         top_k: int | None = None,
         filters: Mapping[str, Any] | None = None,
         **kwargs: Any,
-    ) -> RetrieveResult | list:
+    ) -> RetrieveResult:
         """
         Execute hybrid retrieval using Weaviate Collections API.
 
@@ -176,7 +176,7 @@ class WeaviateHybridRetriever(BaseRetriever):
             raw_items = list(res.objects or [])
         except Exception as e:
             logger.info(f"[RAG] hybrid error: {e}")
-            return []
+            return RetrieveResult(docs=[], query=query, top_k=k, filters=dict(filters) if filters else None)
 
         # ---- (4) Penalize filename-only matches when guard is ON ----
         if guard_on:
@@ -265,7 +265,7 @@ class WeaviateHybridRetriever(BaseRetriever):
                 docs = items_to_docs(list(res2.objects or []), text_key)
                 return RetrieveResult(docs=docs, query=query, top_k=k, filters=dict(filters) if filters else None)
             except Exception:
-                    return []
+                    return RetrieveResult(docs=[], query=query, top_k=k, filters=dict(filters) if filters else None)
 
         log_items(items, logger)
 

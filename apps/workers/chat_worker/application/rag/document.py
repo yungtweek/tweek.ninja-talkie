@@ -49,12 +49,12 @@ class Document:
         doc_id: Optional[str] = None,
         file_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        title: str = "",
-        filename: str = "",
-        extension: str = "",
+        title: str | None = None,
+        filename: str | None = None,
+        extension: str | None = None,
         file_size: int = 0,
         labels: list | None = None,
-        source: str = "",
+        source: str | None = None,
         uri: Optional[str] = None,
         # chunk related
         chunk_id: Optional[str] = None,
@@ -76,12 +76,12 @@ class Document:
         self.file_id = file_id
         self.user_id = user_id
 
-        self.title = title
-        self.filename = filename
-        self.extension = extension
+        self.title = title or ""
+        self.filename = filename or ""
+        self.extension = extension or ""
         self.file_size = file_size
         self.labels = labels if labels is not None else []
-        self.source = source
+        self.source = source or ""
         self.uri = uri
 
         self.chunk_id = chunk_id

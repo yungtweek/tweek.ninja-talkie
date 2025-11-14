@@ -43,6 +43,8 @@ async def get_client() -> weaviate.WeaviateClient:
     async with _lock:
         if _client is not None:
             return _client
+        if _settings.RAG.weaviate_url is None:
+            raise RuntimeError("RAG.weaviate_url is missing: set WEAVIATE_URL in environment or settings.")
         client = _connect_v4(
             _settings.RAG.weaviate_url,
             _settings.RAG.weaviate_api_key,

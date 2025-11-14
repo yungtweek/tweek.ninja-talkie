@@ -8,7 +8,7 @@ class HistoryService:
             self,
             history_repo: HistoryRepository,
             system_prompt: str,
-            max_ctx_tokens: int = 6000,
+            max_ctx_tokens: int | None = 6000,
             max_history_turns: int = 12,
     ):
         self.history = history_repo
