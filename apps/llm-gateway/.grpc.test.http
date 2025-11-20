@@ -1,0 +1,40 @@
+### LLM ChatCompletion (기본 모델 사용)
+GRPC localhost:50052/llm.v1.LlmService/ChatCompletion
+
+{
+  "systemPrompt": "You are a helpful assistant.",
+  "userPrompt": "vLLM gRPC gateway HTTP Client 테스트야. 한 줄로만 대답해줘.",
+  "context": "",
+  "temperature": 0.7,
+  "maxTokens": 128,
+  "topP": 0.95
+}
+
+###
+
+### LLM ChatCompletion (모델 명시)
+GRPC localhost:50052/llm.v1.LlmService/ChatCompletion
+
+{
+  "model": "./model-cache/Qwen2.5-1.5B-Instruct",
+  "systemPrompt": "You are a helpful assistant.",
+  "userPrompt": "모델 이름을 명시해서 호출하는 테스트야. 한 줄로만 대답해줘.",
+  "context": "",
+  "temperature": 0.7,
+  "maxTokens": 128,
+  "topP": 0.95
+}
+
+###
+
+### LLM ChatCompletionStream (스트리밍)
+GRPC localhost:50052/llm.v1.LlmService/ChatCompletionStream
+
+{
+  "systemPrompt": "You are a helpful assistant.",
+  "userPrompt": "스트리밍 테스트야. 한 글자씩 천천히 줘봐.",
+  "context": "",
+  "temperature": 0.7,
+  "maxTokens": 128,
+  "topP": 0.95
+}

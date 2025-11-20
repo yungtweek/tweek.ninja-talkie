@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package llm.v1;
+
+option go_package = "github.com/yungtweek/talkie/apps/llm-gateway/gen/llm;llm";
+
+// 공통 메타데이터 (로그/추적용)
+message LlmMetadata {
+  string request_id = 1; // 워커 쪽에서 생성하는 요청 ID
+  string trace_id   = 2; // 분산 트레이싱용 (선택)
+  string session_id = 3; // 유저 세션 / 대화 ID
+  string user_id    = 4; // 유저 식별자 (익명 ID 가능)
+}
+
+// ChatCompletion 요청
+message ChatCompletionRequest {
+  LlmMetadata meta = 1;
+
+  string model         = 2; // 예: "qwen2.5-7b-instruct"
+  string system_prompt = 3; // 시스템 역할 프롬프트
+  string user_prompt   = 4; // 유저 실제 질문
+  string context       = 5; // RAG 컨텍스트 텍스트 (없으면 빈 문자열)
+
+  double temperature = 6; // 0.0 ~ 2.0
+  int32  max_tokens  = 7; // 생성 최대 토큰 수
+  double top_p       = 8; // nucleus sampling
+}
+
+// ChatCompletion 응답
+message ChatCompletionResponse {
+  string output_text   = 1; // 최종 생성 텍스트
+  string finish_reason = 2; // 예: "stop", "length", "error" 등
+
+  int32 prompt_tokens     = 3;
+  int32 completion_tokens = 4;
+  int32 total_tokens      = 5;
+
+  int64 latency_ms = 6; // gateway 기준 end-start ms
+}
+
+message ChatCompletionChunkResponse {
+  string deltaText      = 1;  // 이번 청크에서 추가된 텍스트
+  string finishReason   = 2;  // 마지막 청크에서만 세팅
+  int32  index          = 3;  // choice index, 보통 0
+  int32  promptTokens   = 4;  // 마지막 청크에서만 세팅
+  int32  completionTokens = 5;
+  int32  totalTokens    = 6;
+  int64  latencyMs      = 7;  // 옵션: 첫 토큰 또는 전체
+}
+
+// LLM Gateway gRPC 서비스 정의
+service LlmService {
+  // 단일 요청/응답 ChatCompletion (비스트리밍)
+  rpc ChatCompletion(ChatCompletionRequest) returns (ChatCompletionResponse);
+  rpc ChatCompletionStream(ChatCompletionRequest) returns (stream ChatCompletionChunkResponse);
+}
