@@ -87,10 +87,16 @@ class Settings(BaseSettings):
     RAG_MAX_CONTEXT: int = 3500
     RAG: RagConfig = Field(default_factory=RagConfig)
 
-
+    LLM_PRIMARY_PROVIDER: str = "vllm"
+    LLM_FALLBACK_PROVIDERS: str = "openai"
+    LLM_TIMEOUT_MS: int = 10000
+    LLM_GATEWAY_ADDR: str = "localhost:50052"
+    LLM_DEFAULT_MODEL: str = "Qwen2.5-1.5B-Instruct"
+    LLM_MAX_TOKENS: int = 1024
     LLM_MODEL: str = "gpt-4o-mini"
     LLM_TEMPERATURE: float = 0.7
     LLM_TIMEOUT_S: int | None = 90
+    LLM_TOP_P: float = 0.95
 
     MAX_CTX_TOKENS: int | None = None  # 모델 컨텍스트 예산
     MAX_HISTORY_TURNS: int | None = None # 최근 N턴

@@ -7,6 +7,10 @@ web:
 gateway:
 	pnpm --filter @talkie/gateway start:dev
 
+llm-gateway:
+	@echo "🔧 Building llm-gateway..."
+	@cd apps/llm-gateway && go run ./cmd/llm-gateway
+
 static:
 	pnpm --filter @talkie/static dev
 
@@ -62,4 +66,3 @@ worker-index:
 	@. .venv/bin/activate && \
 	export PYTHONPATH=$$(pwd)/apps/workers && \
 	python -m index_worker.main 2>&1
-

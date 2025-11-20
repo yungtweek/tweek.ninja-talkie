@@ -366,7 +366,7 @@ class RagPipeline:
 
     # ---------------- Retriever/Chain Builder ----------------
     def build_retriever(self, *, top_k: int | None = None, mmq: int | None = None,
-                        filters: Dict[str, Any] | None = None, llm: Optional[BaseLanguageModel] = None,
+                        filters: Dict[str, Any] | None = None,
                         text_key: Optional[str] = None, search_type: Optional[str] = None,
                         alpha: Optional[float] = None):
         """
@@ -421,7 +421,6 @@ class RagPipeline:
                 top_k=rag_cfg.get("topK"),
                 mmq=rag_cfg.get("mmq"),
                 filters=rag_cfg.get("filters"),
-                llm=used_llm,
                 search_type=rag_cfg.get("searchType"),
                 alpha=rag_cfg.get("alpha"),
             )
@@ -448,7 +447,6 @@ class RagPipeline:
                             top_k=rag_cfg.get("topK"),
                             mmq=rag_cfg.get("mmq"),
                             filters=rag_cfg.get("filters"),
-                            llm=used_llm,
                             text_key=tk,
                         )
                         fallback_result = retriever2.invoke(q)

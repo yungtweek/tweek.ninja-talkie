@@ -12,6 +12,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import BaseMessage
 from langchain_core.messages.utils import count_tokens_approximately
 
+from chat_worker.domain.ports.llm import LlmPort
 from chat_worker.domain.ports.metrics_repo import MetricsRepositoryPort
 
 from chat_worker.infrastructure.langchain.token_stream_callback import TokenStreamCallback
@@ -22,7 +23,7 @@ log = getLogger('run_llm_stream')
 
 async def llm_runner(
         *,
-        llm: Any,
+        llm: LlmPort,
         job_id: str,
         user_id: str,
         messages: list[BaseMessage],
@@ -89,7 +90,7 @@ async def llm_runner(
             # Configure callbacks for streaming tokens and metrics
             config = RunnableConfig(callbacks=[token_stream_cb, metric_cb], tags=["final_answer"])
             # Execute asynchronously and stream through callbacks
-            await llm.ainvoke(messages, config)
+            await llm.chat_stream(messages, config)
 
     async def _guarded_invoke():
         """

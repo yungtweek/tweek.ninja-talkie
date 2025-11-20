@@ -18,7 +18,8 @@ from chat_worker.application.repo_sink import RepoSink
 from chat_worker.application.services.chat_history_service import HistoryService
 from chat_worker.application.utils.to_langchain_messages import to_langchain_messages
 from chat_worker.infrastructure.db.pool_factory import create_pg_pool
-from chat_worker.infrastructure.langchain.openai_client import get_llm
+from chat_worker.infrastructure.langchain.openai_client import get_llm as get_openai_llm
+from chat_worker.infrastructure.langchain.vllm_client import get_llm as get_vllm_llm
 from chat_worker.infrastructure.langchain.weaviate_client import get_client
 from chat_worker.infrastructure.repo.postgres_chat_repo import PostgresChatRepo
 from chat_worker.infrastructure.repo.postgres_history_repo import PostgresHistoryRepository
@@ -113,7 +114,9 @@ async def main():
     metrics_repo = PostgresMetricsRepo(pool)
     chat_repo = PostgresChatRepo(pool)
     history_repo = PostgresHistoryRepository(pool)
-    llm = await get_llm()
+    vllm_client = await get_vllm_llm()
+    openai_client = await get_openai_llm()
+
 
     # Warm-up/health probe (optional)
     r = await redis.info()
@@ -126,7 +129,7 @@ async def main():
     embeddings = OpenAIEmbeddings(model=settings.EMBEDDING_MODEL)
     pipeline = RagPipeline(
         settings=settings.RAG,  # ← inject sub-config explicitly
-        llm=llm,                    # ← reuse a single LLM instance per worker
+        llm=openai_client,                    # ← reuse a single LLM instance per worker
         client=weaviate_client,     # (optional) v4 client
         embeddings=embeddings,      # (optional) embeddings
         text_key="text"
@@ -211,7 +214,7 @@ async def main():
 
                 # Execute unified runner (streams tokens, collects metrics, guarantees terminal events)
                 await llm_runner(
-                    llm=llm,                          # kept for signature compatibility
+                    llm=vllm_client,                          # kept for signature compatibility
                     chain=chain,                      # None for GEN, chain for RAG
                     chain_input=chain_input,          # None for GEN
                     mode=run_mode,                    # "gen" or "rag" (metrics label)
