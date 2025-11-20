@@ -9,6 +9,7 @@
 .env
 .env.*
 !.env.example
+.envrc
 
 # Python virtualenv (공유 .venv)
 .venv/
