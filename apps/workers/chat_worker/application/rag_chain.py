@@ -154,7 +154,6 @@ class RagPipeline:
             text_key: str | None = None,
             client: Optional[weaviate.WeaviateClient] = None,
             embeddings: Embeddings,
-            llm: Optional[BaseLanguageModel] = None,
             default_top_k: int | None = None,
             default_mmq: int | None = None,
             max_context: int | None = None,
@@ -179,7 +178,6 @@ class RagPipeline:
             self.search_type = WeaviateSearchType(self.search_type.lower())
         self.client = client
         self.embeddings = embeddings
-        self.llm = llm  # may be None; chain() will validate
 
         # Prompt
         self.prompt = ChatPromptTemplate.from_messages(
@@ -402,15 +400,11 @@ class RagPipeline:
         else:
             return WeaviateHybridRetriever(ctx)
 
-    def build(self, llm: Optional[BaseLanguageModel] = None):
+    def build(self):
         """
-        Create the final RAG chain (prompt + LLM).
+        Create the final RAG chain (prompt).
         Injects context via a retriever step.
         """
-        used_llm = llm or self.llm
-        if used_llm is None:
-            raise ValueError("LLM must be provided: inject via RagPipeline(llm=...) or pass to chain(llm=...).")
-
         def _with_context(inputs: Dict[str, Any]):
             """
             Retrieve and compress context for the input question.
@@ -494,13 +488,10 @@ class RagPipeline:
         return (
                 RunnableLambda(_with_context)
                 | self.prompt
-                # | RunnableLambda(_log_prompt_value)
-                | used_llm.with_config(tags=["final_answer"])
         )
 
 def make_rag_chain(
     settings: RagConfig | None = None,
-    llm: Optional[BaseLanguageModel] = None,
     pipeline: RagPipeline | None = None,
     embeddings: Embeddings | None = None,
 ):
@@ -516,7 +507,7 @@ def make_rag_chain(
                 "Embeddings must be provided when constructing a new RagPipeline: "
                 "make_rag_chain(embeddings=...)"
             )
-        pipe = RagPipeline(settings=settings, llm=llm, embeddings=embeddings)
+        pipe = RagPipeline(settings=settings, embeddings=embeddings)
     else:
         pipe = pipeline
     return pipe.build()

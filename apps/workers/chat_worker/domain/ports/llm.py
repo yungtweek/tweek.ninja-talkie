@@ -14,10 +14,10 @@ class LlmPort(Protocol):
     RAG는 이 포트를 통해 LLM만 호출하면 됨.
     """
 
-    async def chat(self, messages: List[BaseMessage], config: RunnableConfig | None = None, ) -> BaseMessage:
+    async def ainvoke(self, messages: List[BaseMessage], config: RunnableConfig | None = None, ) -> BaseMessage:
         """일반 ChatCompletion 요청."""
         ...
 
-    async def chat_stream(self, messages: List[BaseMessage], config: RunnableConfig | None = None, ) -> None:
+    async def astream(self, messages: List[BaseMessage], config: RunnableConfig | None = None, ) -> None:
         """스트리밍 ChatCompletion (deltaText 단위로 yield)."""
         ...

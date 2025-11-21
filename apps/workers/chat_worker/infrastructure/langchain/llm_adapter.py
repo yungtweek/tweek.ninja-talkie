@@ -42,7 +42,7 @@ class LangchainLlmAdapter:
             timeout_s=self.timeout_s,
         )
 
-    async def chat(
+    async def ainvoke(
             self,
             messages: List[BaseMessage],
             config: RunnableConfig | None = None,
@@ -57,7 +57,7 @@ class LangchainLlmAdapter:
             # 예전 코드: await llm.ainvoke(messages, config)
             return await llm.ainvoke(messages, config)
 
-    async def chat_stream(
+    async def astream(
             self,
             messages: List[BaseMessage],
             config: RunnableConfig | None = None,

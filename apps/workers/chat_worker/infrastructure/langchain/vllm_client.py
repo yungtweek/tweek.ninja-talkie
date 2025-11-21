@@ -68,7 +68,7 @@ class VllmGrpcClient:
 
         return self._stub
 
-    async def chat(
+    async def ainvoke(
             self,
             messages: List[BaseMessage],
             config: RunnableConfig | None = None,
@@ -95,7 +95,7 @@ class VllmGrpcClient:
         output_text = resp.output_text
         return AIMessage(content=output_text)
 
-    async def chat_stream(
+    async def astream(
             self,
             messages: List[BaseMessage],
             config: RunnableConfig | None = None,

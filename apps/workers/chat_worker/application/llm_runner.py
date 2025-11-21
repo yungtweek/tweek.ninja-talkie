@@ -81,16 +81,16 @@ async def llm_runner(
 
     # Invoke either the provided chain or the raw LLM with streaming callbacks attached
     async def _invoke():
+        # Configure callbacks for streaming tokens and metrics
+        config = RunnableConfig(callbacks=[token_stream_cb, metric_cb], tags=["final_answer"])
         if chain is not None:
-            # Configure callbacks for streaming tokens and metrics
-            config = RunnableConfig(callbacks=[token_stream_cb, metric_cb])
             # Execute asynchronously and stream through callbacks
-            await chain.ainvoke(chain_input or {}, config)
+            prompt_value = await chain.ainvoke(chain_input or {})
+            await llm.astream(prompt_value.to_messages(), config)
+            # await llm.chat_stream(prompt, config)
         else:
-            # Configure callbacks for streaming tokens and metrics
-            config = RunnableConfig(callbacks=[token_stream_cb, metric_cb], tags=["final_answer"])
             # Execute asynchronously and stream through callbacks
-            await llm.chat_stream(messages, config)
+            await llm.astream(messages, config)
 
     async def _guarded_invoke():
         """

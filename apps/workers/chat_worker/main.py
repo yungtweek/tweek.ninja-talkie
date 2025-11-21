@@ -129,7 +129,6 @@ async def main():
     embeddings = OpenAIEmbeddings(model=settings.EMBEDDING_MODEL)
     pipeline = RagPipeline(
         settings=settings.RAG,  # ← inject sub-config explicitly
-        llm=openai_client,                    # ← reuse a single LLM instance per worker
         client=weaviate_client,     # (optional) v4 client
         embeddings=embeddings,      # (optional) embeddings
         text_key="text"
@@ -227,7 +226,6 @@ async def main():
                     on_done=sink.on_done,
                     on_error=sink.on_error,
                 )
-                # log.info(f"final_text: {final_text}")
 
     finally:
         if not shutdown_event.is_set():
