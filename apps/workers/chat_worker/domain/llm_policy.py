@@ -6,10 +6,10 @@ from typing import List, Optional, Sequence
 
 
 class LlmProvider(str, Enum):
-    """사용 가능한 LLM 제공자 종류.
+    """Types of supported LLM providers.
 
-    도메인 레벨에선 '누가 제공하는지'만 알고,
-    실제 호출 방식(gRPC / HTTP / OpenAI SDK 등)은 모른다.
+    Domain layer only knows *who* provides the model.
+    Transport details (gRPC / HTTP / SDK) are handled in infrastructure.
     """
     VLLM = "vllm"
     OPENAI = "openai"
@@ -17,17 +17,17 @@ class LlmProvider(str, Enum):
 
 @dataclass(frozen=True)
 class FallbackDecision:
-    """LLM 호출 시 어떤 제공자를 어떤 순서로 사용할지에 대한 결정.
+    """Represents the provider order to attempt for an LLM call.
 
-    - primary: 먼저 시도할 provider
-    - fallbacks: primary 실패 시 순서대로 시도할 provider 리스트
+    - primary: provider to try first
+    - fallbacks: providers to try sequentially if primary fails
     """
     primary: LlmProvider
     fallbacks: Sequence[LlmProvider]
 
     @property
     def ordered_providers(self) -> List[LlmProvider]:
-        """primary + fallbacks 를 순서대로 합친 리스트."""
+        """Return the provider list in order: primary first, then fallbacks (deduplicated)."""
         seen: set[LlmProvider] = set()
         ordered: List[LlmProvider] = []
 
@@ -44,11 +44,11 @@ class FallbackDecision:
 
 
 def parse_providers(value: str) -> List[LlmProvider]:
-    """쉼표로 구분된 provider 문자열을 LlmProvider 리스트로 변환.
+    """Parse a comma‑separated provider string into a list of LlmProvider values.
 
-    예:
-        "vllm,openai"  -> [LlmProvider.VLLM, LlmProvider.OPENAI]
-        " openai "     -> [LlmProvider.OPENAI]
+    Example:
+        "vllm,openai" -> [LlmProvider.VLLM, LlmProvider.OPENAI]
+        " openai "    -> [LlmProvider.OPENAI]
     """
     providers: List[LlmProvider] = []
 
@@ -59,29 +59,25 @@ def parse_providers(value: str) -> List[LlmProvider]:
         try:
             providers.append(LlmProvider(name))
         except ValueError:
-            # 알 수 없는 provider 이름은 무시 (도메인 규칙에 맞게 필요 시 변경 가능)
+            # Ignore unknown provider names (can be tightened by domain rules if needed)
             continue
 
     return providers
 
 
-# 도메인 레벨에서 사용하는 기본 정책 (env / settings 로 덮어쓸 수 있음)
+# Default domain-level policy (can be overridden via environment/settings)
 DEFAULT_PRIMARY_PROVIDER = LlmProvider.VLLM
 DEFAULT_FALLBACK_PROVIDERS: Sequence[LlmProvider] = (LlmProvider.OPENAI,)
 
 
 def get_default_policy(chat_mode: Optional[str] = None) -> FallbackDecision:
-    """기본 LLM 폴백 정책을 반환.
+    """Return the default fallback policy.
 
-    현재는 chat_mode 를 사용하지 않지만,
-    나중에 다음과 같이 확장할 수 있다:
+    chat_mode is reserved for future expansion, e.g.:
 
-        - gen 모드: vLLM -> OpenAI
-        - rag 모드: OpenAI -> vLLM
-        - system 모드: vLLM only
-
-    chat_mode:
-        도메인에서 사용하는 채팅 모드 식별자 (예: "gen", "rag" 등)
+        - gen mode: vLLM -> OpenAI
+        - rag mode: OpenAI -> vLLM
+        - system mode: vLLM only
     """
     # TODO: chat_mode 기반으로 정책 분기 필요하면 여기서 구현
     return FallbackDecision(
@@ -94,26 +90,25 @@ def build_policy_from_config(
         primary: str,
         fallbacks: Optional[str] = None,
 ) -> FallbackDecision:
-    """환경설정에서 읽어온 provider 문자열을 기반으로 정책을 생성.
+    """Construct a fallback policy from configuration strings.
 
-    예:
+    Example:
         primary="vllm"
         fallbacks="openai"
 
-    같은 값을 Settings 에서 읽어와서 이 함수에 넘기면,
-    도메인 레벨에서는 LlmProvider/ FallbackDecision 만 다루면 된다.
+    The domain layer only consumes LlmProvider and FallbackDecision objects.
     """
     try:
         primary_provider = LlmProvider(primary.strip())
     except ValueError:
-        # 잘못된 값이면 기본값 사용 (필요하면 에러로 바꾸기 가능)
+        # Fallback to default provider (can be changed to raise if stricter behavior is needed)
         primary_provider = DEFAULT_PRIMARY_PROVIDER
 
     fallback_providers: List[LlmProvider] = []
     if fallbacks:
         fallback_providers = parse_providers(fallbacks)
 
-    # primary 와 중복된 fallback 은 제거
+    # Deduplicate primary from fallback list
     decision = FallbackDecision(
         primary=primary_provider,
         fallbacks=fallback_providers,

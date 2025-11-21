@@ -48,12 +48,12 @@ func (s *LLMService) ChatCompletion(ctx context.Context, req *pb.ChatCompletionR
 			return nil, status.Error(codes.InvalidArgument, "model is required and default model not configured")
 		}
 		if logger.Log != nil {
-			logger.Log.Info("ChatCompletion using configured default model", zap.String("model", req.Model))
+			logger.Log.Debug("ChatCompletion using configured default model", zap.String("model", req.Model))
 		}
 	}
 
 	if logger.Log != nil {
-		logger.Log.Info("ChatCompletion request",
+		logger.Log.Debug("ChatCompletion request",
 			zap.String("model", req.Model),
 			zap.String("system_prompt", req.SystemPrompt),
 			zap.String("user_prompt", req.UserPrompt),
@@ -99,7 +99,7 @@ func (s *LLMService) ChatCompletion(ctx context.Context, req *pb.ChatCompletionR
 	choice := vResp.Choices[0]
 
 	if logger.Log != nil {
-		logger.Log.Info("ChatCompletion success",
+		logger.Log.Debug("ChatCompletion success",
 			zap.String("model", vResp.Model),
 			zap.Int64("latency_ms", latencyMs),
 			zap.Int("prompt_tokens", vResp.Usage.PromptTokens),
@@ -134,12 +134,12 @@ func (s *LLMService) ChatCompletionStream(req *pb.ChatCompletionRequest, stream 
 			return status.Error(codes.InvalidArgument, "model is required and default model not configured")
 		}
 		if logger.Log != nil {
-			logger.Log.Info("ChatCompletionStream using configured default model", zap.String("model", req.Model))
+			logger.Log.Debug("ChatCompletionStream using configured default model", zap.String("model", req.Model))
 		}
 	}
 
 	if logger.Log != nil {
-		logger.Log.Info("ChatCompletionStream request",
+		logger.Log.Debug("ChatCompletionStream request",
 			zap.String("model", req.Model),
 			zap.String("system_prompt", req.SystemPrompt),
 			zap.String("user_prompt", req.UserPrompt),
@@ -205,7 +205,7 @@ func (s *LLMService) ChatCompletionStream(req *pb.ChatCompletionRequest, stream 
 
 	latencyMs := time.Since(start).Milliseconds()
 	if logger.Log != nil {
-		logger.Log.Info("ChatCompletionStream finished",
+		logger.Log.Debug("ChatCompletionStream finished",
 			zap.String("model", req.Model),
 			zap.Int64("latency_ms", latencyMs),
 		)

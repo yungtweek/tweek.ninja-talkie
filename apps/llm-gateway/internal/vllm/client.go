@@ -66,7 +66,7 @@ func NewClient(baseURL string, timeoutMs int) *Client {
 
 // Chat sends a ChatCompletionRequest to the vLLM server and returns the parsed response.
 func (c *Client) Chat(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionResponse, error) {
-	logger.Log.Info("vLLM Chat request",
+	logger.Log.Debug("vLLM Chat request",
 		zap.String("endpoint", "/v1/chat/completions"),
 	)
 
@@ -84,7 +84,7 @@ func (c *Client) Chat(ctx context.Context, req ChatCompletionRequest) (*ChatComp
 		return nil, fmt.Errorf("vLLM HTTP request failed: %w", err)
 	}
 
-	logger.Log.Info("vLLM HTTP response received",
+	logger.Log.Debug("vLLM HTTP response received",
 		zap.Int("status_code", r.StatusCode()),
 	)
 
@@ -103,7 +103,7 @@ func (c *Client) Chat(ctx context.Context, req ChatCompletionRequest) (*ChatComp
 // It expects the vLLM server to expose an OpenAI-compatible SSE stream from
 // /v1/chat/completions when the request has Stream set to true.
 func (c *Client) ChatStream(ctx context.Context, req ChatCompletionRequest, onChunk StreamHandler) error {
-	logger.Log.Info("vLLM ChatStream request",
+	logger.Log.Debug("vLLM ChatStream request",
 		zap.String("endpoint", "/v1/chat/completions"),
 	)
 
@@ -184,6 +184,6 @@ func (c *Client) ChatStream(ctx context.Context, req ChatCompletionRequest, onCh
 		return fmt.Errorf("vLLM stream scanner error: %w", err)
 	}
 
-	logger.Log.Info("vLLM ChatStream completed")
+	logger.Log.Debug("vLLM ChatStream completed")
 	return nil
 }

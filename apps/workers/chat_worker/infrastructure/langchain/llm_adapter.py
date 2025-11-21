@@ -16,11 +16,10 @@ _settings = Settings()
 
 
 class LangchainLlmAdapter:
-    """LangChain ChatOpenAI(get_llm)을 감싼 LlmPort 구현체.
+    """LlmPort implementation wrapping a LangChain ChatModel.
 
-    - 지금은 OpenAI용 openai_client.get_llm()을 사용
-    - 나중에 vLLM용 client나 FallbackChatModel로 교체해도,
-      도메인에서는 LlmPort 인터페이스만 보면 되도록 설계
+    Currently uses OpenAI via openai_client.get_llm().
+    Can be replaced with vLLM or fallback client without changing domain code.
     """
 
     def __init__(
@@ -34,8 +33,7 @@ class LangchainLlmAdapter:
         self.timeout_s = timeout_s if timeout_s is not None else _settings.LLM_TIMEOUT_S
 
     async def _get_llm(self):
-        # 지금은 openai_client.get_llm 을 사용하지만,
-        # 나중에 vllm_client.get_llm 또는 fallback_client.get_llm 으로 바꿔도 됨.
+        # Currently returns OpenAI client; can be swapped with vLLM or fallback client.
         return await get_llm(
             model=self.model,
             temperature=self.temperature,
@@ -47,14 +45,14 @@ class LangchainLlmAdapter:
             messages: List[BaseMessage],
             config: RunnableConfig | None = None,
     ) -> BaseMessage:
-        """일반 ChatCompletion (non-stream, LangChain ainvoke 사용)."""
+        """Non-streaming ChatCompletion using LangChain ainvoke."""
         llm = await self._get_llm()
 
         if config is None:
-            # 기존처럼 기본 설정
+            # Default behavior when no config is provided
             return await llm.ainvoke(messages)
         else:
-            # 예전 코드: await llm.ainvoke(messages, config)
+            # Explicit config passthrough
             return await llm.ainvoke(messages, config)
 
     async def astream(
@@ -62,10 +60,7 @@ class LangchainLlmAdapter:
             messages: List[BaseMessage],
             config: RunnableConfig | None = None,
     ) -> None:
-        """스트리밍 ChatCompletion.
-
-        LangChain ChatModel의 astream()을 감싸서 delta text만 흘려보낸다.
-        """
+        """Streaming ChatCompletion wrapper that forwards chunks via LangChain callbacks."""
         llm = await self._get_llm()
 
         if config is None:
@@ -74,5 +69,5 @@ class LangchainLlmAdapter:
             astream = llm.astream(messages, config)
 
         async for _chunk in astream:
-            # 실제 토큰 전송은 TokenStreamCallback.on_llm_new_token이 담당
+            # Token delivery is handled by TokenStreamCallback.on_llm_new_token
             continue

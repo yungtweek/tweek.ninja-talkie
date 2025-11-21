@@ -23,7 +23,7 @@ def _make_key(addr: str, model: str, timeout_ms: Optional[int]) -> Tuple[str, st
 
 
 def _messages_to_prompts(messages: List[BaseMessage]) -> tuple[str, str]:
-    """Convert LangChain messages into (system_prompt, user_prompt) strings."""
+    """Convert LangChain messages into (system_prompt, user_prompt)."""
     system_parts: list[str] = []
     user_parts: list[str] = []
 
@@ -36,7 +36,7 @@ def _messages_to_prompts(messages: List[BaseMessage]) -> tuple[str, str]:
         elif role in ("human", "user", "human_message"):
             user_parts.append(content)
         else:
-            # AI / 기타 롤은 일단 user 프롬프트 뒤에 메모처럼 붙이자
+            # For AI/other roles, append as metadata after user prompt
             user_parts.append(f"\n\n[prev {role}]: {content}")
 
     system_prompt = "\n\n".join(system_parts) if system_parts else ""
@@ -62,7 +62,7 @@ class VllmGrpcClient:
 
     async def _get_stub(self) -> llm_pb2_grpc.LlmServiceStub:
         if self._stub is None:
-            # Future: switch to secure_channel when TLS is enabled
+            # TODO: migrate to secure_channel when TLS is enabled
             self._channel = grpc.aio.insecure_channel(self.addr)
             self._stub = llm_pb2_grpc.LlmServiceStub(self._channel)
 
@@ -89,7 +89,7 @@ class VllmGrpcClient:
 
         timeout_s = (self.timeout_ms or _settings.LLM_TIMEOUT_MS) / 1000.0
 
-        # unary RPC 호출
+        # Unary RPC call
         resp = await stub.ChatCompletion(req, timeout=timeout_s)
 
         output_text = resp.output_text
@@ -118,7 +118,7 @@ class VllmGrpcClient:
         callbacks = []
         tags: list[str] = []
         if config:
-            # Extract tags/callbacks from RunnableConfig
+            # Extract callbacks and tags from RunnableConfig
             if isinstance(config, dict):
                 callbacks = list(config.get("callbacks") or [])
                 tags = list(config.get("tags") or [])
@@ -127,22 +127,22 @@ class VllmGrpcClient:
                 tags = list(getattr(config, "tags", []) or [])
 
         async for chunk in stub.ChatCompletionStream(req, timeout=timeout_s):
-            # proto stub를 신뢰하고 deltaText 필드를 직접 사용
+            # proto stub is trusted to use deltaText field directly
             delta = chunk.deltaText
             if not delta:
                 continue
 
-            # 🔥 여기서 기존 TokenStreamCallback 시그니처에 맞춰서 호출
+            # Forward decoded delta text into TokenStreamCallback
             for cb in callbacks:
                 on_token = getattr(cb, "on_llm_new_token", None)
                 if on_token is None:
                     continue
 
-                # TokenStreamCallback은 run_coroutine_threadsafe 내부에서 쓰니까
-                # 여기서는 그냥 await on_token(...) 해도 됨 (이미 async로 정의돼있음)
+                # TokenStreamCallback is used inside run_coroutine_threadsafe,
+                # so here just await on_token(...) (already async)
                 await on_token(delta, tags=tags)
 
-        # Trigger end‑of‑stream callbacks
+        # Trigger end-of-stream callbacks
         for cb in callbacks:
             on_end = getattr(cb, "on_llm_end", None)
             if on_end is not None:
@@ -162,13 +162,13 @@ def _create_client(
 async def get_llm(
         model: Optional[str] = None,
         *,
-        temperature: Optional[float] = None,  # NOTE: 지금은 vLLM gateway 쪽 설정 우선, 필요하면 나중에 반영
+        temperature: Optional[float] = None,  # NOTE: temperature is ignored for now, kept for API compatibility
         timeout_s: Optional[int] = None,
 ) -> VllmGrpcClient:
     """Factory for reusing vLLM gRPC clients (keyed by addr/model/timeout)."""
     addr = _settings.LLM_GATEWAY_ADDR
     m = model or _settings.LLM_DEFAULT_MODEL
-    # temperature는 지금은 사용하지 않지만 시그니처 맞추기용으로 유지
+    # Temperature is ignored for now, kept for API compatibility
     _ = temperature
     to_ms = (timeout_s or _settings.LLM_TIMEOUT_MS)
 
@@ -191,7 +191,7 @@ async def get_llm(
 
 
 async def warmup(messages: Optional[Iterable[Any]] = None) -> None:
-    """Pre‑initialize the gRPC channel."""
+    """Pre-initialize the gRPC channel."""
     _ = messages
     client = await get_llm()
     _ = client  # no-op

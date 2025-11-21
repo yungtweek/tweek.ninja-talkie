@@ -114,11 +114,12 @@ def doc_rank(d: Document) -> int:
 
 class RagPipeline:
     """
-    RAG pipeline using LangChain 1.x and Weaviate 1.x.
+    RAG pipeline that builds a prompt with retrieved context.
 
-    Manages environment, settings, and retriever construction per request.
-    Supports Weaviate Collections API (BM25/Hybrid) and LangChain VectorStore (similarity/MMR).
-    Provides optional document compression and robust fallbacks (similarity → BM25 → MMR) with score preservation.
+    Uses LangChain core primitives (Runnable, ChatPromptTemplate) together with
+    Weaviate-based retrievers (hybrid and near_text) and optional document
+    compression. This pipeline prepares the final prompt variables but does not
+    call an LLM directly; the caller is responsible for invoking the model.
 
     Notes:
       - Hybrid search uses dynamic alpha and keyword guards to avoid filename-only bias.
@@ -220,9 +221,9 @@ class RagPipeline:
         toks = kw_tokens(query)
         must_keep: list = []
         try:
-            # keep at most 2 strong keyword hits from original order
+            # keep at most 3 strong keyword hits from original order
             for d in docs:
-                if len(must_keep) >= 3:  # 2 -> 3
+                if len(must_keep) >= 3:
                     break
                 if kw_hit(toks, d):
                     must_keep.append(d)
@@ -309,7 +310,7 @@ class RagPipeline:
             out = kept[: min(len(kept), 8)]  # 6 -> 8
 
         try:
-            logger.info(
+            logger.debug(
                 f"[RAG][compress] in={len(docs)} used_th={used_thresh} kw_keep={len(must_keep)} out={len(out)} dens='full'")
         except Exception:
             pass
@@ -340,7 +341,7 @@ class RagPipeline:
 
             try:
                 left = (budget - total) if budget is not None else float("inf")
-                logger.info("[RAG][ctx-pack] want=%s left=%s file=%s chunk=%s",
+                logger.debug("[RAG][ctx-pack] want=%s left=%s file=%s chunk=%s",
                             ln, left, title,
                             (getattr(d, "chunk_index", None) or (d.metadata.get("chunk_index") if isinstance(d.metadata, dict) else None)))
             except Exception:
@@ -349,7 +350,7 @@ class RagPipeline:
             if budget is not None and total + ln > budget:
                 try:
                     left = (budget - total) if budget is not None else float("inf")
-                    logger.info("[RAG][ctx-pack] SKIP due to budget: file=%s chunk=%s need=%s left=%s",
+                    logger.debug("[RAG][ctx-pack] SKIP due to budget: file=%s chunk=%s need=%s left=%s",
                                 title,
                                 (getattr(d, "chunk_index", None) or (d.metadata.get("chunk_index") if isinstance(d.metadata, dict) else None)),
                                 ln, left)
@@ -378,7 +379,7 @@ class RagPipeline:
 
         # Compute effective search type and search kwargs
         st = normalize_search_type(search_type, self.search_type)
-        logger.info(f"[RAG] search_type: {st.value}")
+        logger.debug(f"[RAG] search_type: {st.value}")
         # Supported modes:
         #   - "hybrid":     Collections API (vector + BM25)
         #   - "near_text":  Collections API (semantic vector search; server-side vectorizer module required, e.g., text2vec-openai; client sends raw text)
@@ -408,7 +409,9 @@ class RagPipeline:
         def _with_context(inputs: Dict[str, Any]):
             """
             Retrieve and compress context for the input question.
-            Return prompt variables for downstream processing.
+
+            Returns a dict of prompt variables (`question`, `context`) for downstream
+            LLM invocation performed outside this pipeline.
             """
             rag_cfg = inputs.get("rag", {}) or {}
             retriever = self.build_retriever(
@@ -423,7 +426,7 @@ class RagPipeline:
             docs_seq: Sequence[Document]
             try:
                 try:
-                    logger.info(
+                    logger.debug(
                         f"[RAG] cfg topK={rag_cfg.get('topK')} mmq={rag_cfg.get('mmq')} filters={rag_cfg.get('filters')}")
                 except Exception:
                     pass
@@ -455,7 +458,7 @@ class RagPipeline:
                     raise last_err
             docs = list(docs_seq)
             compressed_docs = self.compress_docs(docs, q)
-            logger.info("[RAG] compressed_docs: %s", len(compressed_docs))
+            logger.debug("[RAG] compressed_docs: %s", len(compressed_docs))
             if not compressed_docs:
                 logger.warning("[RAG] No relevant documents found for query.")
                 return {
@@ -468,21 +471,21 @@ class RagPipeline:
 
         def _log_prompt_value(pv):
             """
-            Pretty-print the final prompt value for debugging (messages and roles).
+            Pretty-print the prompt value (messages and roles) for debugging.
             """
             try:
                 msgs = pv.to_messages()
-                logger.info("[PROMPT] -----")
+                logger.debug("[PROMPT] -----")
                 for m in msgs:
                     role = getattr(m, "type", None) or getattr(m, "role", "")
                     content = getattr(m, "content", "")
-                    logger.info(f"[{role}] {content}")
-                logger.info("-----")
+                    logger.debug(f"[{role}] {content}")
+                logger.debug("-----")
             except Exception:
                 try:
-                    logger.info("[PROMPT_STR] %s", pv.to_string())
+                    logger.debug("[PROMPT_STR] %s", pv.to_string())
                 except Exception:
-                    logger.info("[PROMPT_RAW] %s", pv)
+                    logger.debug("[PROMPT_RAW] %s", pv)
             return pv
 
         return (

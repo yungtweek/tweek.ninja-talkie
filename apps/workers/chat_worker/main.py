@@ -114,9 +114,7 @@ async def main():
     metrics_repo = PostgresMetricsRepo(pool)
     chat_repo = PostgresChatRepo(pool)
     history_repo = PostgresHistoryRepository(pool)
-    vllm_client = await get_vllm_llm()
-    openai_client = await get_openai_llm()
-
+    llm_client = await get_vllm_llm() # await get_openai_llm()
 
     # Warm-up/health probe (optional)
     r = await redis.info()
@@ -202,7 +200,6 @@ async def main():
                         # "filters": {...}  # optional filters can be injected
                     }
                     chain = rag_chain
-                    log.info(f"rag_cfg: {rag_cfg}")
                     chain_input = {"question": req.message, "rag": rag_cfg}
                     run_mode = "rag"
 
@@ -213,7 +210,7 @@ async def main():
 
                 # Execute unified runner (streams tokens, collects metrics, guarantees terminal events)
                 await llm_runner(
-                    llm=vllm_client,                          # kept for signature compatibility
+                    llm=llm_client,                          # kept for signature compatibility
                     chain=chain,                      # None for GEN, chain for RAG
                     chain_input=chain_input,          # None for GEN
                     mode=run_mode,                    # "gen" or "rag" (metrics label)
