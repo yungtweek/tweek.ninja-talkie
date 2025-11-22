@@ -6,29 +6,29 @@ Chat Worker Entrypoint
 """
 # main.py
 import asyncio, os, signal
+import json
 import logging
 import sys
+import time
 from logging import getLogger
-from typing import Literal
 
 from langchain_openai import OpenAIEmbeddings
 
+from chat_worker.application.dto.requests import ChatRequest, TitleRequest
 from chat_worker.application.rag_chain import RagPipeline
-from chat_worker.application.repo_sink import RepoSink
-from chat_worker.application.services.chat_history_service import HistoryService
-from chat_worker.application.utils.to_langchain_messages import to_langchain_messages
+from chat_worker.application.services.chat_history_service import ChatHistoryService
+from chat_worker.application.services.chat_llm_service import ChatLLMService
+from chat_worker.application.services.chat_title_service import ChatTitleService
 from chat_worker.infrastructure.db.pool_factory import create_pg_pool
-from chat_worker.infrastructure.langchain.openai_client import get_llm as get_openai_llm
 from chat_worker.infrastructure.langchain.vllm_client import get_llm as get_vllm_llm
 from chat_worker.infrastructure.langchain.weaviate_client import get_client
 from chat_worker.infrastructure.repo.postgres_chat_repo import PostgresChatRepo
 from chat_worker.infrastructure.repo.postgres_history_repo import PostgresHistoryRepository
 from chat_worker.infrastructure.repo.postgres_metrics_repo import PostgresMetricsRepo
+from chat_worker.infrastructure.repo.postgres_session_repo import PostgresChatSessionRepo
 from chat_worker.settings import Settings
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-from pydantic import BaseModel, ConfigDict
-from pydantic.alias_generators import to_camel
 
 from redis.asyncio import Redis
 
@@ -56,32 +56,13 @@ if settings.OPENAI_API_KEY:
 
 BOOTSTRAP = settings.KAFKA_BOOTSTRAP
 REDIS_URL = settings.REDIS_URL
-REQ_TOPIC = "chat.request"
+CHAT_REQ_TOPIC = "chat.request"
+TITLE_REQ_TOPIC= "chat.title.generate"
 RES_PREFIX = "chat.response."
 
 shutdown_event = asyncio.Event()  # 👈 shutdown signal
-SEM = asyncio.Semaphore(64)  # concurrency cap per worker process
-
-
-class MyBaseModel(BaseModel):
-    """
-    Base Pydantic model configured for camelCase I/O (populate_by_name + alias_generator).
-    """
-    model_config = ConfigDict(
-        populate_by_name=True,
-        alias_generator=to_camel
-    )
-
-
-class ChatRequest(MyBaseModel):
-    """
-    Kafka payload shape for `chat.request`.
-    """
-    job_id: str
-    user_id: str
-    session_id: str
-    message: str
-    mode: Literal["gen", "rag"] = "gen"
+CHAT_SEM = asyncio.Semaphore(64)  # concurrency cap per worker process
+TITLE_SEM = asyncio.Semaphore(512)
 
 
 async def main():
@@ -93,7 +74,7 @@ async def main():
     """
     # Configure Kafka consumer for the chat request topic
     consumer = AIOKafkaConsumer(
-        REQ_TOPIC,
+        CHAT_REQ_TOPIC, TITLE_REQ_TOPIC,
         bootstrap_servers=BOOTSTRAP,
         group_id="chat-workers",
         retry_backoff_ms=500,
@@ -110,19 +91,26 @@ async def main():
 
     # Repository and model clients
     if pool is None:
-        raise 
+        raise RuntimeError("Postgres connection pool initialization failed: pool is None")
     metrics_repo = PostgresMetricsRepo(pool)
     chat_repo = PostgresChatRepo(pool)
     history_repo = PostgresHistoryRepository(pool)
+    session_repo = PostgresChatSessionRepo(pool)
     llm_client = await get_vllm_llm() # await get_openai_llm()
 
     # Warm-up/health probe (optional)
     r = await redis.info()
     # Stream publisher used to emit SSE-friendly events
     stream_service = StreamService(redis)
+
+    async def xadd_session_event(key: str, event: dict):
+        fields = {"data": json.dumps(event), "ts": str(int(time.time() * 1000))}
+        await redis.xadd(key, fields, maxlen=10000, approximate=True)
+        await redis.expire(key, 60)
+
     # History service builds context windows (system + recent turns)
     system_prompt = "You are Talkie, an assistant that answers briefly."
-    history_service = HistoryService(history_repo, system_prompt, settings.MAX_CTX_TOKENS)
+
     weaviate_client = await get_client()
     embeddings = OpenAIEmbeddings(model=settings.EMBEDDING_MODEL)
     pipeline = RagPipeline(
@@ -133,6 +121,9 @@ async def main():
     )
     rag_chain = pipeline.build()  # 🔁 build once; reuse per request
 
+    history_service = ChatHistoryService(history_repo, system_prompt, settings.MAX_CTX_TOKENS)
+    title_service = ChatTitleService(session_repo, llm_client, xadd_session_event)
+    llm_service = ChatLLMService(settings, history_service, stream_service, chat_repo, metrics_repo, rag_chain, llm_client, llm_runner)
     await consumer.start()
     await producer.start()
     print("🏁 Worker started. Press Ctrl+C to stop.")
@@ -155,74 +146,42 @@ async def main():
         async for msg in consumer:
             if shutdown_event.is_set():
                 break
-            # Parse inbound Kafka message into typed request
-            try:
-                value = msg.value
-                if value is None:
-                    log.error("❌ Received Kafka message with empty value: key=%s, topic=%s, partition=%s, offset=%s",
-                              msg.key, msg.topic, msg.partition, msg.offset)
+
+            if msg.topic == CHAT_REQ_TOPIC:
+                # Parse inbound Kafka message into typed request
+                try:
+                    value = msg.value
+                    if value is None:
+                        log.error("❌ Received Kafka message with empty value: key=%s, topic=%s, partition=%s, offset=%s",
+                                  msg.key, msg.topic, msg.partition, msg.offset)
+                        continue
+                    req = ChatRequest.model_validate_json(value.decode())
+                except Exception as e:
+                    print(f"❌ bad payload: {e}")
                     continue
-                req = ChatRequest.model_validate_json(value.decode())
-            except Exception as e:
-                print(f"❌ bad payload: {e}")
-                continue
 
-            log.info(req)
-            mode = req.mode
-            job_id = req.job_id
-            user_id = req.user_id
-            session_id = req.session_id
-            # Build event publisher bound to (job_id, user_id)
-            publish = stream_service.make_job_publisher(job_id, user_id)
+                async def _run_chat(chat_req: ChatRequest):
+                    async with CHAT_SEM:
+                        await llm_service.generate_response(chat_req)
 
-            # Concurrency guard: limit in-flight jobs per process
-            async with SEM:
-                # Per-request sink for DB side-effects (status/metrics)
-                sink = RepoSink(chat_repo=chat_repo, job_id=job_id, session_id=session_id, mode=mode)
-                # Mark job as started (for dashboards/observability)
-                await sink.on_event(
-                    event_type="started",
-                    data={"mode": mode},
-                )
+                asyncio.create_task(_run_chat(req))
 
-                # Prepare unified inputs for llm_runner
-                chain = None
-                chain_input = None
-                messages = None
-                run_mode = "gen"
+            elif msg.topic == TITLE_REQ_TOPIC:
+                try:
+                    value = msg.value
+                    if value is None:
+                        log.error(
+                            "❌ Received Kafka message with empty value")
+                        continue
+                    req = TitleRequest.model_validate_json(value.decode())
+                except Exception as e:
+                    print(f"❌ bad payload: {e}")
+                    continue
+                async def _run_title(title_req: TitleRequest):
+                    async with TITLE_SEM:
+                        await title_service.generate_title(title_req)
 
-
-                if mode == "rag":
-                    # RAG: use prebuilt chain, no manual messages
-                    rag_cfg = {
-                        "topK": settings.RAG.top_k,
-                        "mmq": settings.RAG.mmq,
-                        # "filters": {...}  # optional filters can be injected
-                    }
-                    chain = rag_chain
-                    chain_input = {"question": req.message, "rag": rag_cfg}
-                    run_mode = "rag"
-
-                else:
-                    # Build history-aware message list from recent turns
-                    turns = await history_service.handle(user_id=user_id, session_id=session_id)
-                    messages = to_langchain_messages(system_prompt, turns, req.message)
-
-                # Execute unified runner (streams tokens, collects metrics, guarantees terminal events)
-                await llm_runner(
-                    llm=llm_client,                          # kept for signature compatibility
-                    chain=chain,                      # None for GEN, chain for RAG
-                    chain_input=chain_input,          # None for GEN
-                    mode=run_mode,                    # "gen" or "rag" (metrics label)
-                    job_id=job_id,
-                    user_id=user_id,
-                    publish=publish,
-                    messages=messages or [],          # [] for RAG
-                    metrics_repo=metrics_repo,
-                    on_event=sink.on_event,
-                    on_done=sink.on_done,
-                    on_error=sink.on_error,
-                )
+                asyncio.create_task(_run_title(req))
 
     finally:
         if not shutdown_event.is_set():

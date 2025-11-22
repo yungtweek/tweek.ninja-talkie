@@ -157,7 +157,7 @@ class WeaviateHybridRetriever(BaseRetriever):
             alpha_eff = min(float(base_alpha), alpha_no_bm25_min)
             guard_on = False
 
-        logger.info(f"[RAG][hybrid] type={hit_type} alpha={alpha_eff} guard={guard_on} nq_tokens={nq_tokens} nq={nq}")
+        logger.debug(f"[RAG][hybrid] type={hit_type} alpha={alpha_eff} guard={guard_on} nq_tokens={nq_tokens} nq={nq}")
 
         # ---- (3) Main hybrid query ----
         try:
@@ -206,7 +206,7 @@ class WeaviateHybridRetriever(BaseRetriever):
                     dist_kept.append(o)
             except Exception:
                 dist_kept.append(o)
-        logger.info(f"[RAG][hybrid] dist_cut={dist_cut} dist_kept={len(dist_kept)}")
+        logger.debug(f"[RAG][hybrid] dist_cut={dist_cut} dist_kept={len(dist_kept)}")
 
         # ---- (6) Keyword guard: require at least one rare-token hit when guard_on ----
         if guard_on:
@@ -252,7 +252,7 @@ class WeaviateHybridRetriever(BaseRetriever):
             kw_hits_final = 0
 
         if kw_hits_final == 0:
-            logger.info(f"[RAG][hybrid] drop_all: no keyword hit → fallback to near_text")
+            logger.debug(f"[RAG][hybrid] drop_all: no keyword hit → fallback to near_text")
             try:
                 res2 = coll.query.near_text(
                     query=query,

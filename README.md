@@ -57,7 +57,6 @@ graph LR
 | Gateway     | `apps/gateway`              | GraphQL + REST API 게이트웨이                                               | ✅ Stable                   |
 | Worker      | `apps/workers/index_worker` | 추출 → 청킹 → 임베딩 → 업서트 파이프라인, Weaviate v4 스키마 자동 관리 포함 | ✅ Stable                   |
 | Worker      | `apps/workers/chat_worker`  | Kafka 아웃박스, 콜백, SSE 기반 실시간 LLM 스트리밍 처리                     | ✅ Stable                   |
-| Worker      | `apps/workers/title_worker` | 세션 제목 자동 생성 및 통합                                                 | ⚙️ 존재 — 정리 및 통합 예정 |
 | LLM Gateway | `apps/llm-gateway`          | Go 기반 gRPC vLLM 서버, 모델 로딩과 추론 분리로 확장성·성능 향상            | ✅ Stable                   |
 | Infra       | `infra/docker`              | Docker Compose, Redis, Kafka, Postgres, Weaviate 구성                       | ✅ Stable                   |
 | Docs        | `docs/features/...`         | 기능별 상세 문서                                                            | 📝 작성 중                  |
@@ -82,8 +81,7 @@ talkie/
  │   ├─ llm-gateway/        # Go-based gRPC LLM Gateway
  │   └─ workers/
  │       ├─ index_worker/   # 문서 인덱싱 파이프라인
- │       ├─ chat_worker/    # 실시간 LLM 스트리밍 워커
- │       └─ title_worker/   # 세션 제목 자동 생성 워커
+ │       └─ chat_worker/    # 실시간 LLM 스트리밍 워커
  │
  ├─ infra/
  │   ├─ docker/             # docker-compose.yml, 환경설정
@@ -119,8 +117,7 @@ talkie/
 - ✅ Web (기본 구조, 인증, 세션, 채팅 UI 등 완성)
 - ✅ RAG 체인 단순화 및 LLM 폴백 관련 문서화
 - ✅ LLM 추론 및 서비스 메트릭 수집 체계 구축
-- ✅ Title Worker 기능을 Chat Worker와 통합 및 개선
-- ⚙️ Title Worker 통합 및 정리 작업 진행 중
+- ✅ Title Worker 완전 통합 (Chat Worker 내부 서비스 구조로 정리 완료)
 - 📝 문서 (docs/features/\*) 작성 중
 
 ---
@@ -215,7 +212,6 @@ graph LR
 | Gateway     | `apps/gateway`              | GraphQL + REST API gateway                                                                        | ✅ Stable                   |
 | Worker      | `apps/workers/index_worker` | Extraction → chunking → embedding → upsert pipeline with Weaviate v4 schema auto-management       | ✅ Stable                   |
 | Worker      | `apps/workers/chat_worker`  | Kafka outbox, callback, SSE-based real-time LLM streaming                                         | ✅ Stable                   |
-| Worker      | `apps/workers/title_worker` | Auto-title generator, planned integration                                                         | ⚙️ Exists — Pending Cleanup |
 | LLM Gateway | `apps/llm-gateway`          | Go-based gRPC vLLM server with model loading/inference separation for scalability and performance | ✅ Stable                   |
 | Infra       | `infra/docker`              | Docker Compose, Redis, Kafka, Postgres, Weaviate                                                  | ✅ Stable                   |
 | Docs        | `docs/features/...`         | Feature documentation                                                                             | 📝 Docs in Progress         |
@@ -248,7 +244,7 @@ graph LR
 - ✅ Index Worker implemented (Extraction → chunking → embedding → upsert with metrics and Weaviate schema auto-management)
 - ✅ Chat Worker implemented (Kafka outbox, callback, SSE, vLLM token streaming pipeline)
 - ✅ Web (base structure, authentication, sessions, chat UI)
-- ⚙️ Title Worker integration and cleanup in progress
+- ✅ Title Worker fully integrated (merged into Chat Worker service architecture)
 - 📝 Docs (docs/features/\*) in progress
 
 ---
@@ -312,7 +308,6 @@ graph LR
 | Gateway     | `apps/gateway`              | GraphQL + REST APIゲートウェイ                                                               | ✅ Stable                    |
 | Worker      | `apps/workers/index_worker` | 抽出 → チャンク化 → 埋め込み → アップサート パイプライン、Weaviate v4 スキーマ自動管理を含む | ✅ Stable                    |
 | Worker      | `apps/workers/chat_worker`  | Kafka アウトボックス、コールバック、SSE ベースのリアルタイム LLM ストリーミング処理          | ✅ Stable                    |
-| Worker      | `apps/workers/title_worker` | セッションタイトルの自動生成と統合予定                                                       | ⚙️ 存在 — 整理および統合予定 |
 | LLM Gateway | `apps/llm-gateway`          | Go ベースの gRPC vLLM サーバー、モデルロードと推論を分離して拡張性・性能を向上               | ✅ Stable                    |
 | Infra       | `infra/docker`              | Docker Compose, Redis, Kafka, Postgres, Weaviate                                             | ✅ Stable                    |
 | Docs        | `docs/features/...`         | 機能別ドキュメント                                                                           | 📝 執筆中                    |
@@ -345,5 +340,5 @@ graph LR
 - ✅ Index Worker（抽出 → チャンク化 → 埋め込み → アップサート、メトリクス収集・Weaviateスキーマ自動化）
 - ✅ Chat Worker（Kafka Outbox・コールバック・SSE・vLLMトークンストリーミングパイプライン 完成）
 - ✅ Web（基本構造・認証・セッション・チャットUI 完成）
-- ⚙️ Title Worker の統合および整理 作業中
+- ✅ Title Worker を完全統合（Chat Worker のサービスアーキテクチャへ統合済み）
 - 📝 ドキュメント（docs/features/\*）執筆中

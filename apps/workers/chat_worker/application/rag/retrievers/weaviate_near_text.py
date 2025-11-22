@@ -25,7 +25,7 @@ class WeaviateNearTextRetriever(BaseRetriever):
             filters: Mapping[str, Any] | None = None,
             **kwargs: Any,
     ) -> RetrieveResult:
-        logger.info(f"[invoke] query={query} top_k={top_k} filters={filters}")
+        logger.debug(f"[invoke] query={query} top_k={top_k} filters={filters}")
         ctx = getattr(self, "_ctx", None)
         if ctx is None:
             raise ValueError("RagContext is not set. Initialize WeaviateNearTextRetriever with ctx=RagContext.")
@@ -52,7 +52,7 @@ class WeaviateNearTextRetriever(BaseRetriever):
             return RetrieveResult(docs=[], query=query, top_k=k, filters=dict(filters) if filters else None)
 
         items = list(getattr(res, "objects", None) or [])
-        log_items(items, logger)
+        logger.debug(f"[items] {items}")
 
         docs = items_to_docs(items, text_key)
         return RetrieveResult(docs=docs, query=query, top_k=k, filters=dict(filters) if filters else None)

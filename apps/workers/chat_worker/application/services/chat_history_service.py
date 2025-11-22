@@ -1,9 +1,9 @@
 # chat_worker/application/services/chat_history_service.py
 from typing import Sequence
 
-from chat_worker.domain.ports.history import HistoryRepository, Turn
+from chat_worker.domain.ports.history_repo import HistoryRepository, Turn
 
-class HistoryService:
+class ChatHistoryService:
     def __init__(
             self,
             history_repo: HistoryRepository,

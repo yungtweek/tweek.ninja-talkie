@@ -34,7 +34,7 @@ from datetime import timezone
 
 import asyncpg
 
-from chat_worker.domain.ports.history import HistoryRepository, Turn, Role
+from chat_worker.domain.ports.history_repo import HistoryRepository, Turn, Role
 
 
 def _to_epoch(dt) -> float:
