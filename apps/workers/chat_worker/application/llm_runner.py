@@ -42,6 +42,7 @@ async def llm_runner(
         on_event: Optional[Callable[[str, dict], Awaitable[None]]] = None,
         on_done: Optional[Callable[..., Awaitable[Any]]] = None,
         on_error: Optional[Callable[[str], Awaitable[None]]] = None,
+        tool_dispatcher: Optional[Any] = None,
 ) -> str | None:
     """
     Execute a single LLM job.
@@ -51,6 +52,10 @@ async def llm_runner(
     - Handles cancellation and optional hard timeout.
     - Returns the final accumulated text (if any).
     """
+
+    # NOTE: tool-call handling will be wired here in a follow-up.
+    # `tool_dispatcher` is injected by the service layer.
+    _ = tool_dispatcher
 
     _nonstream_text: Optional[str] = None
     sources_payload: Optional[dict] = None

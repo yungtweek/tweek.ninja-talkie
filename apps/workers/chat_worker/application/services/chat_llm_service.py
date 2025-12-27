@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Optional
 
 from chat_worker.application.dto.requests import ChatRequest
 from chat_worker.application.repo_sink import RepoSink
@@ -40,6 +40,7 @@ class ChatLLMService:
             rag_chain: Any,
             llm_client: LangchainLlmAdapter,
             llm_runner: Callable[..., Awaitable[None]],
+            tool_dispatcher: Optional[Any] = None,
     ) -> None:
         """
         Construct a ChatLLMService.
@@ -55,6 +56,7 @@ class ChatLLMService:
         self._rag_chain = rag_chain
         self._llm_client = llm_client
         self._llm_runner = llm_runner
+        self._tool_dispatcher = tool_dispatcher
 
     async def generate_response(self, req: ChatRequest) -> None:
         """
@@ -150,5 +152,6 @@ class ChatLLMService:
             outbox_published_at=req.outbox_published_at,
             on_event=sink.on_event,
             on_done=sink.on_done,
+            tool_dispatcher=self._tool_dispatcher,
             on_error=sink.on_error,
         )
