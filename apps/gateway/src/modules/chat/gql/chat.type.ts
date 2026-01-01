@@ -13,6 +13,7 @@ export class Message {
   @Field({ nullable: true }) sourcesJson?: string;
   @Field({ nullable: true }) citationsJson?: string;
   @Field({ nullable: true }) ragSearchJson?: string;
+  @Field({ nullable: true }) toolCallsJson?: string;
 }
 
 @ObjectType()

@@ -36,5 +36,6 @@ export const ChatMessageZ = z.object({
   sourcesJson: z.unknown().nullable().optional(),
   citationsJson: z.unknown().nullable().optional(),
   ragSearchJson: z.unknown().nullable().optional(),
+  toolCallsJson: z.unknown().nullable().optional(),
 });
 export type ChatMessageZod = z.infer<typeof ChatMessageZ>;

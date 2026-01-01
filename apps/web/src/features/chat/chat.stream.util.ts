@@ -1,10 +1,21 @@
-import type { RagEventMeta, RagEventPayload } from '@talkie/events-contracts';
-import { RagEventTypes, getRagEventMeta } from '@talkie/events-contracts';
+import type {
+  RagEventMeta,
+  RagEventPayload,
+  ToolCallPayload,
+  ToolEventMeta,
+} from '@talkie/events-contracts';
+import {
+  RagEventTypes,
+  ToolEventTypes,
+  getRagEventMeta,
+  getToolEventMeta,
+} from '@talkie/events-contracts';
 
 type StreamHandlers = {
   onText?: (chunk: string) => void;
   onSources?: (sources: unknown) => void;
   onRagSearch?: (meta: RagEventMeta, payload: RagEventPayload) => void;
+  onToolCall?: (meta: ToolEventMeta, payload: ToolCallPayload) => void;
   onDone?: () => void;
   onError?: (err: unknown) => void;
 };
@@ -52,6 +63,34 @@ export function openChatStream(jobId: string, handlers: StreamHandlers) {
       try {
         const d = JSON.parse(e.data);
         handlers.onRagSearch?.(meta, d);
+      } catch (err) {
+        console.warn(`[chat][${eventName}] parse failed`, err);
+      }
+    });
+  }
+
+  for (const eventName of ToolEventTypes) {
+    const meta = getToolEventMeta(eventName);
+    if (!meta) continue;
+    es.addEventListener(eventName, (e: MessageEvent) => {
+      try {
+        const d = JSON.parse(e.data) as ToolCallPayload & {
+          tool?: string;
+          callId?: string;
+          attempt?: number;
+          tookMs?: number | null;
+          argsPreview?: string | null;
+          resultPreview?: string | null;
+        };
+        const payload: ToolCallPayload = {
+          tool: d.tool,
+          callId: d.callId,
+          attempt: d.attempt,
+          tookMs: d.tookMs,
+          argsPreview: d.argsPreview,
+          resultPreview: d.resultPreview,
+        };
+        handlers.onToolCall?.(meta, payload);
       } catch (err) {
         console.warn(`[chat][${eventName}] parse failed`, err);
       }

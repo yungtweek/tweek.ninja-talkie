@@ -103,6 +103,7 @@ type Message {
   ragSearchJson: String
   role: String!
   sourcesJson: String
+  toolCallsJson: String
   turn: Int!
 }
 

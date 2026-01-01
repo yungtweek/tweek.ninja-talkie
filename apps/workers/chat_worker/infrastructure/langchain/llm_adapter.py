@@ -2,7 +2,7 @@ from __future__ import annotations
 import inspect
 import asyncio
 
-from typing import List, Any, Optional
+from typing import List, Any, Optional, Mapping, Sequence
 
 from charset_normalizer.md import getLogger
 from langchain_core.messages import BaseMessage
@@ -64,31 +64,47 @@ class LangchainLlmAdapter:
             self,
             messages: List[BaseMessage],
             config: RunnableConfig | None = None,
+            tools: Optional[Sequence[Mapping[str, Any]]] = None,
     ) -> BaseMessage:
         """Non-streaming ChatCompletion using LangChain ainvoke."""
         kwargs, cfg = _extract_configurable_kwargs(config)
+        llm = self._llm
+        if tools:
+            bind_tools = getattr(llm, "bind_tools", None)
+            if bind_tools is not None:
+                llm = bind_tools(tools)
+            else:
+                logger.debug("tools requested but llm has no bind_tools; skipping")
         if cfg is None:
             # Default behavior when no config is provided
-            return await self._llm.ainvoke(messages, **kwargs)
+            return await llm.ainvoke(messages, **kwargs)
         else:
             # Explicit config passthrough + runtime overrides
-            return await self._llm.ainvoke(messages, config=cfg, **kwargs)
+            return await llm.ainvoke(messages, config=cfg, **kwargs)
 
     async def astream(
             self,
             messages: List[BaseMessage],
             config: RunnableConfig | None = None,
+            tools: Optional[Sequence[Mapping[str, Any]]] = None,
     ) -> None:
         """Streaming ChatCompletion wrapper that forwards chunks via LangChain callbacks."""
         kwargs, cfg = _extract_configurable_kwargs(config)
+        llm = self._llm
+        if tools:
+            bind_tools = getattr(llm, "bind_tools", None)
+            if bind_tools is not None:
+                llm = bind_tools(tools)
+            else:
+                logger.debug("tools requested but llm has no bind_tools; skipping")
         # Call backend .astream and support both:
         # 1) async iterator directly
         # 2) coroutine that resolves to an async iterator
         logger.debug("Streaming ChatCompletion", extra={"config": config})
         if cfg is None:
-            stream_or_coro = self._llm.astream(messages, **kwargs)
+            stream_or_coro = llm.astream(messages, **kwargs)
         else:
-            stream_or_coro = self._llm.astream(messages, config=config, **kwargs)
+            stream_or_coro = llm.astream(messages, config=config, **kwargs)
 
         if inspect.iscoroutine(stream_or_coro):
             astream = await stream_or_coro

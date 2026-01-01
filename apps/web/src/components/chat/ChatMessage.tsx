@@ -12,12 +12,14 @@ import {
   RagSearchKey,
   RagStageKey,
   RagStagePayload,
+  ToolCallsSnapshot,
+  ToolEventStatus,
 } from '@/features/chat/chat.types';
 import { safeJsonParse } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
-import { IconCheck, IconCopy, IconFileText } from '@tabler/icons-react';
+import { IconCheck, IconCopy, IconFileText, IconTool } from '@tabler/icons-react';
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard';
 import { Spinner } from '@/components/ui/spinner';
 import { Badge } from '@/components/ui/badge';
@@ -155,6 +157,30 @@ export default function ChatMessage({ chat, showDots }: { chat: ChatEdge; showDo
     return hasStage ? normalized : null;
   }, [chat.node.ragSearch, chat.node.ragSearchJson]);
 
+  const toolCalls = useMemo(() => {
+    const parsed = safeJsonParse<ToolCallsSnapshot | Record<string, unknown>>(
+      chat.node.toolCallsJson,
+      {},
+    );
+    const normalized: ToolCallsSnapshot = {
+      order: [],
+      calls: {},
+    };
+    if (parsed && typeof parsed === 'object') {
+      const order = (parsed as ToolCallsSnapshot).order;
+      if (Array.isArray(order)) {
+        normalized.order = [...order];
+      }
+      const calls = (parsed as ToolCallsSnapshot).calls;
+      if (calls && typeof calls === 'object') {
+        normalized.calls = { ...calls };
+      }
+    }
+
+    const hasCalls = Boolean(normalized.order && normalized.order.length > 0);
+    return hasCalls ? normalized : null;
+  }, [chat.node.toolCallsJson]);
+
   const stageLabels: Record<RagSearchKey, string> = {
     searchCall: 'Search Call',
     retrieve: 'Retrieve',
@@ -184,6 +210,35 @@ export default function ChatMessage({ chat, showDots }: { chat: ChatEdge; showDo
     }
     return entries;
   }, [ragSearch]);
+
+  const toolCallEntries = useMemo(() => {
+    if (!toolCalls) return [];
+    const entries: Array<{
+      callId: string;
+      tool: string;
+      status: ToolEventStatus;
+      attempt?: number;
+      tookMs?: number | null;
+      argsPreview?: string | null;
+      resultPreview?: string | null;
+    }> = [];
+    for (const callId of toolCalls.order ?? []) {
+      const entry = toolCalls.calls?.[callId];
+      if (!entry) continue;
+      const status = entry.completed ? 'completed' : 'in_progress';
+      const payload = entry.completed ?? entry.inProgress ?? {};
+      entries.push({
+        callId,
+        tool: entry.tool ?? payload.tool ?? callId,
+        status,
+        attempt: entry.attempt ?? payload.attempt,
+        tookMs: payload.tookMs ?? null,
+        argsPreview: entry.inProgress?.argsPreview ?? entry.completed?.argsPreview ?? null,
+        resultPreview: entry.completed?.resultPreview ?? null,
+      });
+    }
+    return entries;
+  }, [toolCalls]);
 
   const formatStageMetrics = (
     payload?: RagStagePayload | null,
@@ -239,6 +294,12 @@ export default function ChatMessage({ chat, showDots }: { chat: ChatEdge; showDo
     return null;
   }, [ragSearch]);
 
+  const toolSummaryStatus = useMemo(() => {
+    if (!toolCallEntries.length) return null;
+    const hasInProgress = toolCallEntries.some(entry => entry.status === 'in_progress');
+    return (hasInProgress ? 'in_progress' : 'completed') as ToolEventStatus;
+  }, [toolCallEntries]);
+
   const summaryPayload = summaryState?.payload ?? null;
   const summaryStatus = summaryState?.status ?? null;
   const isRagSearchActive = summaryStatus === 'in_progress';
@@ -248,6 +309,11 @@ export default function ChatMessage({ chat, showDots }: { chat: ChatEdge; showDo
       ? 'text-[color:var(--ok-fg)] bg-[color:var(--ok-bg)] border-[color:var(--ok-bg)]'
       : '';
   const statusTextClass = summaryStatus === 'in_progress' ? 'animate-pulse' : '';
+  const toolBadgeClass =
+    toolSummaryStatus === 'completed'
+      ? 'text-[color:var(--ok-fg)] bg-[color:var(--ok-bg)] border-[color:var(--ok-bg)]'
+      : '';
+  const toolStatusTextClass = toolSummaryStatus === 'in_progress' ? 'animate-pulse' : '';
 
   const groupedCitations = useMemo(() => {
     const groups = new Map<string, typeof citations>();
@@ -344,6 +410,74 @@ export default function ChatMessage({ chat, showDots }: { chat: ChatEdge; showDo
                   </div>
                 </CollapsibleContent>
               ) : null}
+            </Collapsible>
+          </div>
+        )}
+        {toolCallEntries.length > 0 && (
+          <div className="mb-2 text-xs text-muted-foreground">
+            <Collapsible defaultOpen={false} className="group/collapsible">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex w-full items-center cursor-pointer gap-2 text-xs text-muted-foreground my-2"
+                >
+                  <IconTool className="w-4 h-4" />
+                  <span className="font-medium">Tool calls</span>
+                  {toolSummaryStatus ? (
+                    <>
+                      <span className="text-muted-foreground">·</span>
+                      <Badge variant="outline" className={`font-medium ${toolBadgeClass}`}>
+                        <span className={toolStatusTextClass}>
+                          {toolSummaryStatus === 'in_progress' ? 'in progress' : 'completed'}
+                        </span>
+                      </Badge>
+                    </>
+                  ) : null}
+                  <span className="text-muted-foreground">· {toolCallEntries.length}</span>
+                  <ChevronDown className="w-4 h-4 ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2">
+                <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  <div className="font-medium text-foreground/70">Tool calls</div>
+                  <div className="mt-2 space-y-2">
+                    {toolCallEntries.map(entry => {
+                      const statusLabel =
+                        entry.status === 'completed' ? 'completed' : 'in progress';
+                      const dotClass =
+                        entry.status === 'completed'
+                          ? 'bg-foreground/60'
+                          : 'bg-muted-foreground/60';
+                      const metaParts = [
+                        statusLabel,
+                        entry.attempt ? `attempt ${entry.attempt}` : null,
+                        typeof entry.tookMs === 'number' ? `${entry.tookMs}ms` : null,
+                      ].filter(Boolean);
+                      return (
+                        <div key={entry.callId} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+                            <span>
+                              {entry.tool}
+                              {metaParts.length ? ` · ${metaParts.join(' · ')}` : ''}
+                            </span>
+                          </div>
+                          {entry.argsPreview ? (
+                            <div className="rounded-md bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground">
+                              args: {entry.argsPreview}
+                            </div>
+                          ) : null}
+                          {entry.resultPreview ? (
+                            <div className="rounded-md bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground">
+                              result: {entry.resultPreview}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </CollapsibleContent>
             </Collapsible>
           </div>
         )}

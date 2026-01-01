@@ -32,7 +32,7 @@ class DummyLlm:
     provider = "test"
     model = "test"
 
-    async def astream(self, _messages: list, _config: Any = None) -> None:
+    async def astream(self, _messages: list, _config: Any = None, tools: Any = None) -> None:
         return None
 
 
@@ -361,6 +361,30 @@ class RepoSinkTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(repo.job_events), 1)
         self.assertEqual(repo.job_events[0]["event_type"], "done")
         self.assertEqual(repo.job_events[0]["payload"], {"foo": "bar"})
+
+    async def test_on_event_persists_tool_calls(self) -> None:
+        repo = DummyChatRepo()
+        sink = RepoSink(
+            chat_repo=repo,
+            job_id="job-5",
+            user_id="user-5",
+            session_id="sess-5",
+        )
+
+        await sink.on_event(
+            "tool.call.in_progress",
+            {"event": "tool.call.in_progress", "jobId": "job-5", "tool": "ping", "argsPreview": "{}"},
+        )
+        await sink.on_event(
+            "tool.call.completed",
+            {"event": "tool.call.completed", "jobId": "job-5", "tool": "ping", "resultPreview": "ok"},
+        )
+
+        self.assertEqual(len(repo.job_events), 2)
+        self.assertEqual(repo.job_events[0]["event_type"], "tool.call.in_progress")
+        self.assertEqual(repo.job_events[0]["payload"]["tool"], "ping")
+        self.assertEqual(repo.job_events[1]["event_type"], "tool.call.completed")
+        self.assertEqual(repo.job_events[1]["payload"]["resultPreview"], "ok")
 
     def test_extract_citations_handles_collections(self) -> None:
         citations = [{"source_id": "S1"}]

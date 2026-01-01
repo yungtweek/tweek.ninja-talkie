@@ -26,6 +26,10 @@ from chat_worker.application.rag.postprocessors.reranker import (
 from chat_worker.application.services.chat_history_service import ChatHistoryService
 from chat_worker.application.services.chat_llm_service import ChatLLMService
 from chat_worker.application.services.chat_title_service import ChatTitleService
+from chat_worker.application.tool.dispatcher import ToolDispatcher
+from chat_worker.application.tool.registry import ToolRegistry
+from chat_worker.application.tool.tools.metrics_health_snapshot import MetricsHealthSnapshotTool, \
+    MetricsHealthArgs
 from chat_worker.infrastructure.db.pool_factory import create_pg_pool
 from chat_worker.infrastructure.langchain.llm_adapter import LangchainLlmAdapter
 from chat_worker.infrastructure.langchain.vllm_client import get_llm as get_vllm_llm
@@ -110,6 +114,14 @@ async def main():
     rerank_provider, rerank_model = settings.resolve_rerank_provider_model()
     compress_provider = settings.LLM_COMPRESS_PROVIDER
     compress_model = settings.LLM_COMPRESS_MODEL
+
+    registry = ToolRegistry()
+    dispatcher = ToolDispatcher(registry)
+
+    tool = MetricsHealthSnapshotTool()
+    registry.register(tool)
+    dispatcher.register_args_model(tool.spec.name, MetricsHealthArgs)
+    tool_specs = registry.list_specs()
 
     log.info(
         "LLM config resolved",
@@ -203,8 +215,18 @@ async def main():
 
     history_service = ChatHistoryService(history_repo, system_prompt, settings.MAX_CTX_TOKENS)
     title_service = ChatTitleService(session_repo, title_llm_adapter, xadd_session_event)
-    llm_service = ChatLLMService(settings, history_service, stream_service, chat_repo, metrics_repo, rag_chain,
-                                 llm_adapter, llm_runner)
+    llm_service = ChatLLMService(
+        settings,
+        history_service,
+        stream_service,
+        chat_repo,
+        metrics_repo,
+        rag_chain,
+        llm_adapter,
+        llm_runner,
+        tool_dispatcher=dispatcher,
+        tool_specs=tool_specs,
+    )
     await consumer.start()
     await producer.start()
     print("🏁 Worker started. Press Ctrl+C to stop.")

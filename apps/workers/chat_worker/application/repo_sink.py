@@ -27,7 +27,12 @@ class RepoSink:
 
     async def on_event(self, event_type: str, data: Mapping[str, Any]):
         self.seq += 1
-        if event_type not in {"done", "final"}:
+        if event_type not in {
+            "done",
+            "final",
+            "tool.call.in_progress",
+            "tool.call.completed",
+        }:
             return
         payload = {
             k: v

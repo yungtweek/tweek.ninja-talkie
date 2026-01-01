@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Optional
 
 from chat_worker.application.dto.requests import ChatRequest
 from chat_worker.application.repo_sink import RepoSink
@@ -8,6 +8,7 @@ from chat_worker.application.utils.to_langchain_messages import to_langchain_mes
 from chat_worker.domain.ports.chat_repo import ChatRepositoryPort
 from chat_worker.domain.ports.llm import LlmPort
 from chat_worker.domain.ports.metrics_repo import MetricsRepositoryPort
+from chat_worker.application.tool.types import ToolSpec
 from chat_worker.infrastructure.langchain.llm_adapter import LangchainLlmAdapter
 from chat_worker.infrastructure.stream.stream_service import safe_publish
 from chat_worker.settings import Settings
@@ -40,6 +41,8 @@ class ChatLLMService:
             rag_chain: Any,
             llm_client: LangchainLlmAdapter,
             llm_runner: Callable[..., Awaitable[None]],
+            tool_dispatcher: Optional[Any] = None,
+            tool_specs: Optional[list[ToolSpec]] = None,
     ) -> None:
         """
         Construct a ChatLLMService.
@@ -55,6 +58,8 @@ class ChatLLMService:
         self._rag_chain = rag_chain
         self._llm_client = llm_client
         self._llm_runner = llm_runner
+        self._tool_dispatcher = tool_dispatcher
+        self._tool_specs = tool_specs
 
     async def generate_response(self, req: ChatRequest) -> None:
         """
@@ -150,5 +155,7 @@ class ChatLLMService:
             outbox_published_at=req.outbox_published_at,
             on_event=sink.on_event,
             on_done=sink.on_done,
+            tool_dispatcher=self._tool_dispatcher,
+            tool_specs=self._tool_specs,
             on_error=sink.on_error,
         )
