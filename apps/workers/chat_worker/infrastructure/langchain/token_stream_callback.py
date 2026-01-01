@@ -18,14 +18,29 @@ class TokenStreamCallback(AsyncCallbackHandler):
     - Emitted events use keys: event, jobId, userId, index, content (for chunks), and done/error events.
     """
 
-    def __init__(self, job_id: str, user_id: str, publish, aggregate_final: bool = True, allowed_tags: set[str] | None = None):
+    def __init__(
+            self,
+            job_id: str,
+            user_id: str,
+            publish,
+            aggregate_final: bool = True,
+            allowed_tags: set[str] | None = None,
+            emit_done: bool = True,
+            suppress_tool_calls: bool = False,
+            defer_publish: bool = False,
+    ):
         self.publish = publish
         self.job_id = job_id
         self.user_id = user_id
         self.aggregate_final = aggregate_final
         self.allowed_tags = allowed_tags
+        self.emit_done = emit_done
+        self.suppress_tool_calls = suppress_tool_calls
+        self.defer_publish = defer_publish
         self._buf: list[str] = []
+        self._pending_tokens: list[tuple[int, str]] = []
         self._ended = False
+        self._suppress = False
         self._i = 0  # chunk sequence index
         # 🔑 Capture the main event loop for thread-safe scheduling
         self._loop = asyncio.get_running_loop()
@@ -42,13 +57,46 @@ class TokenStreamCallback(AsyncCallbackHandler):
         return None
 
 
+    @staticmethod
+    def _chunk_has_tool_call(chunk: Any) -> bool:
+        if chunk is None:
+            return False
+        message = getattr(chunk, "message", None)
+        if message is None:
+            return False
+        tool_chunks = getattr(message, "tool_call_chunks", None) or []
+        if tool_chunks:
+            return True
+        additional = getattr(message, "additional_kwargs", None) or {}
+        if additional.get("tool_calls") or additional.get("function_call"):
+            return True
+        content = getattr(message, "content", None)
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and item.get("type") in {"function_call", "tool_call"}:
+                    return True
+        return False
+
     async def on_llm_new_token(self, token: str, **kwargs):
         tags = kwargs.get("tags") or []
         if self.allowed_tags and not any(t in self.allowed_tags for t in tags):
             return
+        if self.suppress_tool_calls and not self._suppress:
+            if self._chunk_has_tool_call(kwargs.get("chunk")):
+                self._suppress = True
+                self._buf.clear()
+                self._pending_tokens.clear()
+                return
+        if self._suppress:
+            return
         # Optionally buffer tokens to reconstruct the final text later
         if self.aggregate_final and token:
             self._buf.append(token)
+        if self.defer_publish:
+            if token:
+                self._pending_tokens.append((self._i, token))
+            self._i += 1
+            return
         # Never await directly in a non-async thread; schedule safely on the main loop
         asyncio.run_coroutine_threadsafe(
             safe_publish(self.publish,
@@ -64,11 +112,26 @@ class TokenStreamCallback(AsyncCallbackHandler):
             return
         if self._ended:
             return
+        if self.suppress_tool_calls:
+            try:
+                generations = getattr(response, "generations", None) or []
+                if generations and generations[0]:
+                    message = getattr(generations[0][0], "message", None)
+                    if message is not None:
+                        tool_calls = getattr(message, "tool_calls", None)
+                        additional = getattr(message, "additional_kwargs", None) or {}
+                        if tool_calls or additional.get("tool_calls"):
+                            self._suppress = True
+                            self._buf.clear()
+                            self._pending_tokens.clear()
+            except Exception:
+                pass
         self._ended = True
-        asyncio.run_coroutine_threadsafe(
-            safe_publish(self.publish, {"event": "done", "jobId": self.job_id, "userId": self.user_id}, ),
-            self._loop,
-        )
+        if self.emit_done:
+            asyncio.run_coroutine_threadsafe(
+                safe_publish(self.publish, {"event": "done", "jobId": self.job_id, "userId": self.user_id}, ),
+                self._loop,
+            )
 
     async def on_llm_error(self, error: BaseException, **kwargs):
         if self._ended:
@@ -87,3 +150,19 @@ class TokenStreamCallback(AsyncCallbackHandler):
         if not self._buf:
             return ""
         return "".join(self._buf)
+
+    async def flush(self) -> None:
+        if not self._pending_tokens:
+            return
+        for idx, token in self._pending_tokens:
+            await safe_publish(
+                self.publish,
+                {
+                    "event": "token",
+                    "jobId": self.job_id,
+                    "userId": self.user_id,
+                    "index": idx,
+                    "content": token,
+                },
+            )
+        self._pending_tokens.clear()

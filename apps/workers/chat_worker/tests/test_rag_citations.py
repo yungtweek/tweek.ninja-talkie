@@ -32,7 +32,7 @@ class DummyLlm:
     provider = "test"
     model = "test"
 
-    async def astream(self, _messages: list, _config: Any = None) -> None:
+    async def astream(self, _messages: list, _config: Any = None, tools: Any = None) -> None:
         return None
 
 

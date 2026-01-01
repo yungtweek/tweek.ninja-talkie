@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -119,11 +120,11 @@ class MetricsHealthSnapshotTool(BaseTool[MetricsHealthArgs, dict[str, Any]]):
             meta={"trace_id": ctx.trace_id},
         )
 
-    def _to_interval(self, r: str) -> str:
+    def _to_interval(self, r: str) -> timedelta:
         return {
-            "15m": "15 minutes",
-            "1h": "1 hour",
-            "6h": "6 hours",
-            "24h": "24 hours",
-            "7d": "7 days",
+            "15m": timedelta(minutes=15),
+            "1h": timedelta(hours=1),
+            "6h": timedelta(hours=6),
+            "24h": timedelta(hours=24),
+            "7d": timedelta(days=7),
         }[r]

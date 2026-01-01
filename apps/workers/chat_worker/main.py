@@ -121,6 +121,7 @@ async def main():
     tool = MetricsHealthSnapshotTool()
     registry.register(tool)
     dispatcher.register_args_model(tool.spec.name, MetricsHealthArgs)
+    tool_specs = registry.list_specs()
 
     log.info(
         "LLM config resolved",
@@ -214,8 +215,18 @@ async def main():
 
     history_service = ChatHistoryService(history_repo, system_prompt, settings.MAX_CTX_TOKENS)
     title_service = ChatTitleService(session_repo, title_llm_adapter, xadd_session_event)
-    llm_service = ChatLLMService(settings, history_service, stream_service, chat_repo, metrics_repo, rag_chain,
-                                 llm_adapter, llm_runner)
+    llm_service = ChatLLMService(
+        settings,
+        history_service,
+        stream_service,
+        chat_repo,
+        metrics_repo,
+        rag_chain,
+        llm_adapter,
+        llm_runner,
+        tool_dispatcher=dispatcher,
+        tool_specs=tool_specs,
+    )
     await consumer.start()
     await producer.start()
     print("🏁 Worker started. Press Ctrl+C to stop.")
