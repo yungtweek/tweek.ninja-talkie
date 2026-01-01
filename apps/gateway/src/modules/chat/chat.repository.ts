@@ -71,6 +71,63 @@ const ragSearchJson = sql`
   )
 `;
 
+const toolCallsJson = sql`
+  NULLIF(
+    jsonb_strip_nulls(
+      (
+        WITH tool_calls AS (
+          SELECT
+            COALESCE(je.payload->>'callId', je.payload->>'tool') AS call_id,
+            MAX(je.payload->>'tool') AS tool_name,
+            MAX((je.payload->>'attempt')::int) AS attempt_num,
+            MIN(je.created_at) AS first_seen
+          FROM job_events je
+          WHERE je.job_id = cm.job_id
+            AND je.event IN ('tool.call.in_progress', 'tool.call.completed')
+            AND COALESCE(je.payload->>'callId', je.payload->>'tool') IS NOT NULL
+          GROUP BY 1
+        )
+        SELECT jsonb_build_object(
+          'order', (SELECT jsonb_agg(call_id ORDER BY first_seen) FROM tool_calls),
+          'calls', (
+            SELECT jsonb_object_agg(
+              tc.call_id,
+              jsonb_strip_nulls(
+                jsonb_build_object(
+                  'tool', tc.tool_name,
+                  'attempt', tc.attempt_num,
+                  'inProgress', tip.payload,
+                  'completed', tco.payload
+                )
+              )
+            )
+            FROM tool_calls tc
+            LEFT JOIN LATERAL (
+              SELECT je2.payload
+              FROM job_events je2
+              WHERE je2.job_id = cm.job_id
+                AND je2.event = 'tool.call.in_progress'
+                AND COALESCE(je2.payload->>'callId', je2.payload->>'tool') = tc.call_id
+              ORDER BY je2.created_at DESC
+              LIMIT 1
+            ) tip ON true
+            LEFT JOIN LATERAL (
+              SELECT je3.payload
+              FROM job_events je3
+              WHERE je3.job_id = cm.job_id
+                AND je3.event = 'tool.call.completed'
+                AND COALESCE(je3.payload->>'callId', je3.payload->>'tool') = tc.call_id
+              ORDER BY je3.created_at DESC
+              LIMIT 1
+            ) tco ON true
+          )
+        )
+      )
+    ),
+    '{}'::jsonb
+  )
+`;
+
 /** Data access layer for chat-related entities (sessions, messages, jobs, outbox). */
 @Injectable()
 export class ChatRepository {
@@ -241,9 +298,10 @@ export class ChatRepository {
              )
                FROM message_citations mc
                WHERE mc.message_id = cm.id
-             ) as "citationsJson"
+            ) as "citationsJson"
             ,
-            ${ragSearchJson} as "ragSearchJson"
+            ${ragSearchJson} as "ragSearchJson",
+            ${toolCallsJson} as "toolCallsJson"
       FROM chat_messages cm
       JOIN chat_sessions cs ON cs.id = cm.session_id
       WHERE ${sql.join(conditions, sql` AND `)}

@@ -1,7 +1,13 @@
 import { chatStore, selectIsStreaming } from '@/features/chat/chat.store';
 import type { ChatEdge } from '@/features/chat/chat.types';
 import { safeJsonParse } from '@/lib/utils';
-import { RagEventMetaByType, RagStageEventType } from '@talkie/events-contracts';
+import {
+  RagEventMetaByType,
+  RagStageEventType,
+  ToolCallEventType,
+  ToolEventMetaByType,
+  ToolCallsSnapshot,
+} from '@talkie/events-contracts';
 
 const baseState = chatStore.getState();
 
@@ -89,6 +95,74 @@ describe('updateRagSearch', () => {
           completed: {
             hits: 2,
             tookMs: 15,
+          },
+        },
+      },
+    });
+  });
+});
+
+describe('updateToolCalls', () => {
+  it('tracks tool call progress and completion', () => {
+    const jobId = 'job-999';
+    chatStore.setState({
+      ...baseState,
+      edges: [
+        {
+          node: {
+            role: 'assistant',
+            content: '',
+            jobId,
+          },
+        },
+      ],
+    });
+
+    chatStore.getState().updateToolCalls(
+      jobId,
+      ToolEventMetaByType[ToolCallEventType.CALL_IN_PROGRESS],
+      {
+        tool: 'search',
+        callId: 'call-1',
+        attempt: 1,
+        argsPreview: '{"q":"hi"}',
+      },
+    );
+
+    chatStore.getState().updateToolCalls(
+      jobId,
+      ToolEventMetaByType[ToolCallEventType.CALL_COMPLETED],
+      {
+        tool: 'search',
+        callId: 'call-1',
+        attempt: 1,
+        tookMs: 120,
+        resultPreview: '{"ok":true}',
+      },
+    );
+
+    const updated = safeJsonParse<ToolCallsSnapshot>(
+      chatStore.getState().edges[0]?.node.toolCallsJson,
+      null,
+    );
+    expect(updated).toEqual({
+      order: ['call-1'],
+      calls: {
+        'call-1': {
+          tool: 'search',
+          attempt: 1,
+          inProgress: {
+            tool: 'search',
+            callId: 'call-1',
+            attempt: 1,
+            argsPreview: '{"q":"hi"}',
+          },
+          completed: {
+            tool: 'search',
+            callId: 'call-1',
+            attempt: 1,
+            tookMs: 120,
+            resultPreview: '{"ok":true}',
           },
         },
       },

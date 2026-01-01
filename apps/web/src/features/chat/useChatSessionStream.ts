@@ -46,6 +46,7 @@ export function useChatSessionStream(sessionId: string | null) {
     updateStream,
     updateSources,
     updateRagSearch,
+    updateToolCalls,
     markStreamDone,
   } =
     useChatActions();
@@ -150,6 +151,7 @@ export function useChatSessionStream(sessionId: string | null) {
           onText: chunk => updateStream(chunk, jobId),
           onSources: sources => updateSources(sources, jobId),
           onRagSearch: (meta, payload) => updateRagSearch(jobId, meta, payload),
+          onToolCall: (meta, payload) => updateToolCalls(jobId, meta, payload),
           onDone: () => {
             hasMeta.current = false;
             markStreamDone(jobId);

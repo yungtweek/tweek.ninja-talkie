@@ -71,6 +71,8 @@ EventType = Literal[
     "rag_mmr.completed",
     "rag_compress.in_progress",
     "rag_compress.completed",
+    "tool.call.in_progress",
+    "tool.call.completed",
 ]
 
 
@@ -137,6 +139,8 @@ class StreamService:
             "rag_mmr.completed",
             "rag_compress.in_progress",
             "rag_compress.completed",
+            "tool.call.in_progress",
+            "tool.call.completed",
         }
 
         async def publish(evt: Dict[str, Any]) -> str:

@@ -9,6 +9,11 @@ import type {
   RagStageSnapshot,
   RagWrapperKey,
   RagWrapperSnapshot,
+  ToolCallPayload,
+  ToolCallSnapshot,
+  ToolCallsSnapshot,
+  ToolEventMeta,
+  ToolEventStatus,
 } from '@talkie/events-contracts';
 
 export type Role = 'user' | 'assistant' | 'system';
@@ -24,6 +29,11 @@ export type {
   RagStageSnapshot,
   RagWrapperKey,
   RagWrapperSnapshot,
+  ToolCallPayload,
+  ToolCallSnapshot,
+  ToolCallsSnapshot,
+  ToolEventMeta,
+  ToolEventStatus,
 };
 
 export type RagLiveEvent = {
@@ -45,6 +55,7 @@ export interface ChatNode {
   turn?: number | null;
   sourcesJson?: string | null;
   ragSearchJson?: string | null;
+  toolCallsJson?: string | null;
   jobId?: string | null;
   streamDone?: boolean;
   ragSearch?: RagLiveEvent;

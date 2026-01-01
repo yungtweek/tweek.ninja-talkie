@@ -12,6 +12,7 @@ describe('ChatResolver.messages (unit)', () => {
           messageIndex: 2,
           sourcesJson: { foo: 'bar' },
           citationsJson: [{ sourceId: 'S1', fileName: 'doc.md' }],
+          toolCallsJson: { order: ['call-1'] },
         },
       ]),
     } as any;
@@ -24,6 +25,7 @@ describe('ChatResolver.messages (unit)', () => {
     expect(res.edges[0].node.citationsJson).toBe(
       JSON.stringify([{ sourceId: 'S1', fileName: 'doc.md' }]),
     );
+    expect(res.edges[0].node.toolCallsJson).toBe(JSON.stringify({ order: ['call-1'] }));
   });
 
   it('returns null citationsJson when missing', async () => {
@@ -37,6 +39,7 @@ describe('ChatResolver.messages (unit)', () => {
           messageIndex: 3,
           sourcesJson: null,
           citationsJson: null,
+          toolCallsJson: null,
         },
       ]),
     } as any;
@@ -46,5 +49,6 @@ describe('ChatResolver.messages (unit)', () => {
 
     expect(res.edges).toHaveLength(1);
     expect(res.edges[0].node.citationsJson).toBeNull();
+    expect(res.edges[0].node.toolCallsJson).toBeNull();
   });
 });

@@ -7,6 +7,10 @@ import {
   RagSearchSnapshot,
   RagStageSnapshot,
   RagWrapperSnapshot,
+  ToolCallSnapshot,
+  ToolCallPayload,
+  ToolCallsSnapshot,
+  ToolEventMeta,
 } from '@/features/chat/chat.types';
 import { useShallow } from 'zustand/react/shallow';
 import { apolloClient } from '@/lib/apollo/apollo.client';
@@ -31,6 +35,11 @@ interface ChatState {
     jobId: string,
     meta: RagEventMeta,
     payload?: RagEventPayload,
+  ) => void;
+  updateToolCalls: (
+    jobId: string,
+    meta: ToolEventMeta,
+    payload?: ToolCallPayload,
   ) => void;
   markStreamDone: (jobId: string) => void;
   reset: () => void;
@@ -250,6 +259,67 @@ export const chatStore = create<ChatState>((set, get) => ({
       return { edges: next };
     }),
 
+  updateToolCalls: (jobId, meta, payload) =>
+    set(st => {
+      if (!payload) return { edges: st.edges };
+      const next = updateEdgeByJobId(st.edges, jobId, node => {
+        const parsed = safeJsonParse<ToolCallsSnapshot | Record<string, unknown>>(
+          node.toolCallsJson,
+          {},
+        );
+        const normalized: ToolCallsSnapshot = {
+          order: [],
+          calls: {},
+        };
+        if (parsed && typeof parsed === 'object') {
+          const order = (parsed as ToolCallsSnapshot).order;
+          if (Array.isArray(order)) {
+            normalized.order = [...order];
+          }
+          const calls = (parsed as ToolCallsSnapshot).calls;
+          if (calls && typeof calls === 'object') {
+            normalized.calls = { ...(calls as Record<string, ToolCallSnapshot>) };
+          }
+        }
+
+        const callId = payload.callId ?? payload.tool ?? '';
+        if (!callId) {
+          return node;
+        }
+
+        const existing = normalized.calls?.[callId];
+        const entry: ToolCallSnapshot = existing ? { ...existing } : {};
+        const nextEntry: ToolCallSnapshot = {
+          ...entry,
+          tool: payload.tool ?? entry.tool,
+          attempt: payload.attempt ?? entry.attempt,
+        };
+
+        if (meta.status === 'in_progress') {
+          nextEntry.inProgress = {
+            ...(entry.inProgress ?? {}),
+            ...payload,
+          };
+        } else {
+          nextEntry.completed = {
+            ...(entry.completed ?? {}),
+            ...payload,
+          };
+        }
+
+        normalized.calls = { ...(normalized.calls ?? {}), [callId]: nextEntry };
+        if (!normalized.order?.includes(callId)) {
+          normalized.order = [...(normalized.order ?? []), callId];
+        }
+
+        return {
+          ...node,
+          toolCallsJson: JSON.stringify(normalized),
+        };
+      });
+      return { edges: next };
+    }),
+
   markStreamDone: jobId =>
     set(st => {
       const next = updateEdgeByJobId(st.edges, jobId, node => ({
@@ -291,6 +361,7 @@ export function useChatActions() {
       updateStream: s.appendLive,
       updateSources: s.updateSources,
       updateRagSearch: s.updateRagSearch,
+      updateToolCalls: s.updateToolCalls,
       markStreamDone: s.markStreamDone,
       reset: s.reset,
     })),

@@ -111,7 +111,16 @@ async def llm_runner(
         # Optionally forward to sink for persistence (tokens/sources/usage/heartbeat/done/final)
         if on_event is not None:
             ev_type = event.get("event") or event.get("type")
-            if ev_type in {"token", "sources", "usage", "heartbeat", "done", "final"}:
+            if ev_type in {
+                "token",
+                "sources",
+                "usage",
+                "heartbeat",
+                "done",
+                "final",
+                "tool.call.in_progress",
+                "tool.call.completed",
+            }:
                 await on_event(ev_type, event)
 
     # Stream tokens and aggregate a final text from allowed tags (e.g., "final_answer")
@@ -242,6 +251,20 @@ async def llm_runner(
         if result.meta:
             payload["meta"] = dict(result.meta)
         return json.dumps(payload, ensure_ascii=True, default=_json_default)
+
+    def _preview_payload(value: Any, max_len: int = 500) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            preview = value
+        else:
+            try:
+                preview = json.dumps(value, ensure_ascii=True, default=_json_default)
+            except TypeError:
+                preview = str(value)
+        if len(preview) > max_len:
+            return f"{preview[: max_len - 3]}..."
+        return preview
 
     class ToolCallCaptureCallback(AsyncCallbackHandler):
         def __init__(self) -> None:
@@ -377,7 +400,24 @@ async def llm_runner(
                 current_messages.append(tool_capture_cb.message)
 
             for idx, call in enumerate(tool_calls):
+                tool_call_id = call.call_id or f"{call.name}:{idx}"
+                args_preview = _preview_payload(call.arguments)
+                await _publish_with_sink(
+                    {
+                        "event": "tool.call.in_progress",
+                        "jobId": job_id,
+                        "userId": user_id,
+                        "tool": call.name,
+                        "callId": tool_call_id,
+                        "attempt": round_index + 1,
+                        "tookMs": None,
+                        "argsPreview": args_preview,
+                        "resultPreview": None,
+                    }
+                )
+                started_at = monotonic()
                 result = await tool_dispatcher.dispatch(tool_ctx, call)
+                took_ms = int((monotonic() - started_at) * 1000)
                 log.info(
                     "tool call result",
                     extra={
@@ -389,7 +429,19 @@ async def llm_runner(
                     },
                 )
                 content = _tool_result_to_content(result)
-                tool_call_id = call.call_id or f"{call.name}:{idx}"
+                await _publish_with_sink(
+                    {
+                        "event": "tool.call.completed",
+                        "jobId": job_id,
+                        "userId": user_id,
+                        "tool": call.name,
+                        "callId": tool_call_id,
+                        "attempt": round_index + 1,
+                        "tookMs": took_ms,
+                        "argsPreview": args_preview,
+                        "resultPreview": _preview_payload(content),
+                    }
+                )
                 current_messages.append(
                     ToolMessage(content=content, tool_call_id=tool_call_id)
                 )
