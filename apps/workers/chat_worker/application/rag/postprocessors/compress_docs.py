@@ -46,6 +46,7 @@ async def compress_docs(
     max_context: int | None,
     llm_compressor: LLMContextualCompressor | Any | None = None,
     use_llm: bool = False,
+    job_id: str | None = None,
 ) -> tuple[list[Document], int, bool]:
     compressor = HeuristicCompressor(embeddings=embeddings, max_context=max_context)
     heuristic_docs = compressor.compress_docs(query=query, docs=docs)
@@ -58,9 +59,17 @@ async def compress_docs(
 
     try:
         if hasattr(llm_compressor, "acompress_docs"):
-            out = await llm_compressor.acompress_docs(query=query, docs=heuristic_docs)
+            out = await llm_compressor.acompress_docs(
+                query=query,
+                docs=heuristic_docs,
+                job_id=job_id,
+            )
         else:
-            out = llm_compressor.compress_docs(query=query, docs=heuristic_docs)
+            out = llm_compressor.compress_docs(
+                query=query,
+                docs=heuristic_docs,
+                job_id=job_id,
+            )
     except Exception as e:
         logger.warning("[RAG][compress][llm] failed: %s", e)
         return heuristic_docs, heuristic_hits, False

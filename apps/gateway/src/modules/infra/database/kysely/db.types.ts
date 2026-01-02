@@ -258,6 +258,10 @@ export interface LlmMetrics {
    */
   span_id: string;
   /**
+   * Human-readable span name (e.g., text, tool, rag).
+   */
+  span_name: string | null;
+  /**
    * Throughput: total_tokens / total_ms * 1000.
    */
   tok_per_sec: number | null;
@@ -305,6 +309,7 @@ export interface LlmMetricsCompact {
   request_tag: string | null;
   schema_version: number | null;
   span_id: string | null;
+  span_name: string | null;
   tok_per_sec: number | null;
   total_ms: number | null;
   trace_id: string | null;

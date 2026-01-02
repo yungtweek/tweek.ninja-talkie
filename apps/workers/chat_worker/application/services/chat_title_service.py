@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages.utils import count_tokens_approximately
+from langchain_core.runnables import RunnableConfig
 
 from chat_worker.application.dto.requests import TitleRequest
 from chat_worker.domain.ports.llm import LlmPort
+from chat_worker.domain.ports.metrics_repo import MetricsRepositoryPort
+from chat_worker.infrastructure.langchain.metrics_callback import MetricsCallback
 from chat_worker.infrastructure.langchain.llm_adapter import LangchainLlmAdapter
 from chat_worker.infrastructure.repo.postgres_session_repo import PostgresChatSessionRepo
 
@@ -38,10 +42,12 @@ class ChatTitleService:
     def __init__(
         self,
         session_repo: PostgresChatSessionRepo,
+        metrics_repo: MetricsRepositoryPort | None,
         llm: LangchainLlmAdapter,
         xadd_session_event,
     ):
         self.session_repo = session_repo
+        self.metrics_repo = metrics_repo
         self.llm = llm
         self.xadd_session_event = xadd_session_event
 
@@ -69,7 +75,22 @@ class ChatTitleService:
         ]
 
         # 2) LLM call (semaphore/concurrency is handled externally)
-        res = await self.llm.ainvoke(messages)
+        async def _persist_row(row: dict) -> None:
+            if self.metrics_repo is not None:
+                await self.metrics_repo.upsert_job(row)
+
+        token_len = lambda s: count_tokens_approximately([s])
+        metric_cb = MetricsCallback(
+            job_id=req.job_id,
+            mode="gen",
+            span_name="title_gen",
+            provider=self.llm.provider,
+            model=self.llm.model,
+            persist=_persist_row,
+            token_len=token_len,
+        )
+        config = RunnableConfig(callbacks=[metric_cb], tags=["final_answer"])
+        res = await self.llm.ainvoke(messages, config=config)
         title = res.content.strip("\"'")
 
         user_id = req.user_id

@@ -15,7 +15,7 @@ class PostgresMetricsRepo(MetricsRepositoryPort):
     async def upsert_job(self, row: Mapping[str, Any]) -> None:
         sql = """
               INSERT INTO llm_metrics (
-                  request_id, trace_id, span_id, parent_span_id, user_id,
+                  request_id, trace_id, span_id, parent_span_id, span_name, user_id,
                   request_tag, provider, model_name, model_path,
                   use_rag, rag_hits, count_eot,
                   prompt_chars, prompt_tokens, output_chars, completion_tokens,
@@ -24,21 +24,22 @@ class PostgresMetricsRepo(MetricsRepositoryPort):
                   published_to_first_token_ms,
                   rag_ms,
                   response_status, error_message)
-              VALUES ($1, $2, $3, $4, $5,
-                      COALESCE($6, 'unknown'), COALESCE($7, 'unknown'), $8, COALESCE($9, 'unknown'),
-                      COALESCE($10, false), COALESCE($11, 0), COALESCE($12, true),
-                      COALESCE($13, 0), COALESCE($14, 0), COALESCE($15, 0), COALESCE($16, 0),
-                      $17, $18, $19, $20,
-                      $21,
+              VALUES ($1, $2, $3, $4, $5, $6,
+                      COALESCE($7, 'unknown'), COALESCE($8, 'unknown'), $9, COALESCE($10, 'unknown'),
+                      COALESCE($11, false), COALESCE($12, 0), COALESCE($13, true),
+                      COALESCE($14, 0), COALESCE($15, 0), COALESCE($16, 0), COALESCE($17, 0),
+                      $18, $19, $20, $21,
                       $22,
                       $23,
-                      COALESCE($24, 0), $25) \
+                      $24,
+                      COALESCE($25, 0), $26) \
               """
         args = (
             row.get("request_id"),
             row.get("trace_id"),
             row.get("span_id"),
             row.get("parent_span_id"),
+            row.get("span_name"),
             row.get("user_id"),
             row.get("request_tag"),
             row.get("provider"),

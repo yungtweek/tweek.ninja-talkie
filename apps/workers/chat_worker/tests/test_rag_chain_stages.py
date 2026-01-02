@@ -134,7 +134,13 @@ class RagChainStageTests(unittest.IsolatedAsyncioTestCase):
         doc2 = Document(title="Doc2", page_content="beta")
 
         class DummyReranker:
-            def rerank(self, _query: str, items: list[Document]) -> list[Document]:
+            def rerank(
+                self,
+                _query: str,
+                items: list[Document],
+                *,
+                job_id: str | None = None,
+            ) -> list[Document]:
                 return list(reversed(items))
 
         pipeline.reranker = DummyReranker()
@@ -149,13 +155,26 @@ class RagChainStageTests(unittest.IsolatedAsyncioTestCase):
         called = {"rerank": False, "mmr": False, "compress": False}
 
         class DummyReranker:
-            def rerank(self, _query: str, items: list[Document]) -> list[Document]:
+            def rerank(
+                self,
+                _query: str,
+                items: list[Document],
+                *,
+                job_id: str | None = None,
+            ) -> list[Document]:
                 called["rerank"] = True
                 return items
 
         pipeline.reranker = DummyReranker()
 
-        async def fake_compress(docs: List[Document], _query: str, *, max_context=None, use_llm=None):
+        async def fake_compress(
+            docs: List[Document],
+            _query: str,
+            *,
+            max_context=None,
+            use_llm=None,
+            job_id: str | None = None,
+        ):
             called["compress"] = True
             return docs, len(docs), False
 
@@ -196,7 +215,14 @@ class RagChainStageTests(unittest.IsolatedAsyncioTestCase):
         doc1 = Document(title="Doc1", page_content="alpha")
         doc2 = Document(title="Doc2", page_content="beta")
 
-        async def fake_compress(docs: List[Document], _query: str, *, max_context=None, use_llm=None):
+        async def fake_compress(
+            docs: List[Document],
+            _query: str,
+            *,
+            max_context=None,
+            use_llm=None,
+            job_id: str | None = None,
+        ):
             return [docs[0]], 1, False
 
         pipeline.compress_docs = fake_compress  # type: ignore[assignment]
@@ -213,7 +239,14 @@ class RagChainStageTests(unittest.IsolatedAsyncioTestCase):
         doc1 = Document(title="Doc1", page_content="alpha")
         seen: dict[str, Any] = {}
 
-        async def fake_compress(docs: List[Document], _query: str, *, max_context=None, use_llm=None):
+        async def fake_compress(
+            docs: List[Document],
+            _query: str,
+            *,
+            max_context=None,
+            use_llm=None,
+            job_id: str | None = None,
+        ):
             seen["max_context"] = max_context
             return docs, len(docs), False
 
@@ -229,7 +262,14 @@ class RagChainStageTests(unittest.IsolatedAsyncioTestCase):
         doc1 = Document(title="Doc1", page_content="alpha")
         seen: dict[str, Any] = {}
 
-        async def fake_compress(docs: List[Document], _query: str, *, max_context=None, use_llm=None):
+        async def fake_compress(
+            docs: List[Document],
+            _query: str,
+            *,
+            max_context=None,
+            use_llm=None,
+            job_id: str | None = None,
+        ):
             seen["use_llm"] = use_llm
             return docs, len(docs), False
 
@@ -284,12 +324,25 @@ class RagChainStreamEventTests(unittest.IsolatedAsyncioTestCase):
         class DummyReranker:
             _cfg = DummyRerankCfg()
 
-            def rerank(self, _query: str, items: list[Document]) -> list[Document]:
+            def rerank(
+                self,
+                _query: str,
+                items: list[Document],
+                *,
+                job_id: str | None = None,
+            ) -> list[Document]:
                 return items
 
         pipeline.reranker = DummyReranker()
 
-        async def fake_compress(items: List[Document], _query: str, *, max_context=None, use_llm=None):
+        async def fake_compress(
+            items: List[Document],
+            _query: str,
+            *,
+            max_context=None,
+            use_llm=None,
+            job_id: str | None = None,
+        ):
             return items, len(items), False
 
         pipeline.compress_docs = fake_compress  # type: ignore[assignment]
@@ -369,12 +422,25 @@ class RagChainStreamEventTests(unittest.IsolatedAsyncioTestCase):
         pipeline.build_retriever = lambda **_kwargs: DummyRetriever()  # type: ignore[assignment]
 
         class DummyReranker:
-            def rerank(self, _query: str, items: list[Document]) -> list[Document]:
+            def rerank(
+                self,
+                _query: str,
+                items: list[Document],
+                *,
+                job_id: str | None = None,
+            ) -> list[Document]:
                 return items
 
         pipeline.reranker = DummyReranker()
 
-        async def fake_compress(items: List[Document], _query: str, *, max_context=None, use_llm=None):
+        async def fake_compress(
+            items: List[Document],
+            _query: str,
+            *,
+            max_context=None,
+            use_llm=None,
+            job_id: str | None = None,
+        ):
             return items, len(items), False
 
         pipeline.compress_docs = fake_compress  # type: ignore[assignment]

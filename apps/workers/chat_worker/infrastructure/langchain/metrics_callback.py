@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from time import monotonic
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
+from uuid import uuid4
 
 from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.messages import BaseMessage
@@ -31,6 +32,24 @@ def _as_int(value: Any) -> Optional[int]:
         return int(value)
     except Exception:
         return None
+
+def _has_tool_calls(response: LLMResult) -> bool:
+    """Best-effort detection of tool calls in a LangChain LLMResult."""
+    try:
+        for gen_group in response.generations or []:
+            for gen in gen_group:
+                msg = getattr(gen, "message", None)
+                if not msg:
+                    continue
+                tool_calls = getattr(msg, "tool_calls", None)
+                if tool_calls:
+                    return True
+                additional = getattr(msg, "additional_kwargs", None) or {}
+                if additional.get("tool_calls") or additional.get("function_call"):
+                    return True
+    except Exception:
+        return False
+    return False
 
 def parse_llmresult_metadata(response: LLMResult) -> Dict[str, Any]:
     """
@@ -137,6 +156,7 @@ class MetricsCallback(AsyncCallbackHandler):
             job_id: str,
             *,
             mode: str = "gen",
+            span_name: str = "text",
             provider: Optional[str] = None,
             model: Optional[str] = None,
             sink: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
@@ -147,7 +167,11 @@ class MetricsCallback(AsyncCallbackHandler):
             first_token_delta_ms: Optional[Callable[[], Awaitable[Optional[int]]]] = None,
     ) -> None:
         self.job_id = job_id
+        self.trace_id = job_id
+        self.parent_span_id = job_id
+        self._span_id: Optional[str] = None
         self.mode = mode
+        self.span_name = span_name
         self.provider = provider
         self.model = model
         self.sink = sink
@@ -239,11 +263,13 @@ class MetricsCallback(AsyncCallbackHandler):
         total_ms = None
         if latency_ms is not None:
             total_ms = latency_ms + (queue_ms or 0) + (rag_ms or 0)
+        span_id = self._span_id or str(uuid4())
         row = {
             "request_id": self.job_id,
-            "trace_id": self.job_id,
-            "span_id": self.job_id,
-            "parent_span_id": None,
+            "trace_id": self.trace_id,
+            "span_id": span_id,
+            "parent_span_id": self.parent_span_id,
+            "span_name": self.span_name,
             "user_id": None,
             "request_tag": "llm:request:chat",
             "provider": self.provider or "unknown",
@@ -300,7 +326,16 @@ class MetricsCallback(AsyncCallbackHandler):
             # If no filter provided, track all runs
             self._tracked_run_ids.add(str(run_id))
 
+        self._span_id = str(uuid4())
         self._started_at = monotonic()
+        self._finished = False
+        self._tokens_in = 0
+        self._tokens_out = 0
+        self._error_code = None
+        self._first_token_at = None
+        self._published_to_first_token_ms = None
+        self._gen_parts = []
+        self._prompt_tokenized = False
         # Update model name if provider supplies it
         model_name = (serialized or {}).get("name")
         if model_name:
@@ -399,6 +434,8 @@ class MetricsCallback(AsyncCallbackHandler):
                 pass
 
         self._finished = True
+        if self.span_name == "text" and _has_tool_calls(response):
+            self.span_name = "tool_call"
         await self._emit("done")
         await self._persist()
 

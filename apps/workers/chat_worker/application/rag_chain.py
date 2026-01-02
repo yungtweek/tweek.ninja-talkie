@@ -225,6 +225,7 @@ class RagPipeline:
         *,
         max_context: int | None = None,
         use_llm: bool | None = None,
+        job_id: str | None = None,
     ) -> tuple[list[Document], int, bool]:
         """Compress retrieved documents while preserving scores and ranks."""
         if use_llm is None:
@@ -236,16 +237,23 @@ class RagPipeline:
             max_context=self.max_context if max_context is None else max_context,
             llm_compressor=self.llm_compressor,
             use_llm=use_llm,
+            job_id=job_id,
         )
 
-    async def rerank_docs(self, docs: Sequence[Document], query: str) -> list[Document]:
+    async def rerank_docs(
+        self,
+        docs: Sequence[Document],
+        query: str,
+        *,
+        job_id: str | None = None,
+    ) -> list[Document]:
         if self.reranker is None:
             return list(docs)
         try:
             if hasattr(self.reranker, "arerank"):
-                reranked = await self.reranker.arerank(query, docs)
+                reranked = await self.reranker.arerank(query, docs, job_id=job_id)
             else:
-                reranked = self.reranker.rerank(query, docs)
+                reranked = self.reranker.rerank(query, docs, job_id=job_id)
             return list(reranked)
         except Exception as e:
             logger.warning("[RAG] rerank failed: %s", e)
@@ -520,7 +528,8 @@ class RagPipeline:
                 rerank_batch_size=rerank_cfg_value(self.reranker, "batch_size"),
                 rerank_max_doc_chars=rerank_cfg_value(self.reranker, "max_doc_chars"),
             )
-        reranked_docs = await self.rerank_docs(docs, q)
+        job_id = stream_ctx.get("job_id")
+        reranked_docs = await self.rerank_docs(docs, q, job_id=job_id)
         if stream_ctx.get("has_stream"):
             await emit_stage_event(
                 stream_ctx,
@@ -676,11 +685,13 @@ class RagPipeline:
                 max_context=max_context,
                 use_llm=use_llm,
             )
+        job_id = stream_ctx.get("job_id")
         compressed_docs, heuristic_hits, llm_applied = await self.compress_docs(
             mmr_docs,
             q,
             max_context=max_context,
             use_llm=use_llm,
+            job_id=job_id,
         )
         if stream_ctx.get("has_stream"):
             await emit_stage_event(

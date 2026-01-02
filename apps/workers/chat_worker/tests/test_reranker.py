@@ -88,7 +88,7 @@ class DummyDoc:
 
 
 class DummyReranker(LLMReranker):
-    def _call_llm(self, prompt: str, cfg: RerankConfig) -> str:
+    def _call_llm(self, prompt: str, cfg: RerankConfig, *, job_id: str | None = None) -> str:
         ids = re.findall(r"id=([^\n]+)", prompt)
         results = [
             {"id": rid, "score": 1.0 - i * 0.1, "reason": "ok"} for i, rid in enumerate(ids)
