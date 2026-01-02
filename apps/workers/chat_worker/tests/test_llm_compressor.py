@@ -7,7 +7,13 @@ from chat_worker.application.rag.document import Document
 
 
 class DummyAsyncCompressor(LLMContextualCompressor):
-    async def _call_llm_async(self, prompt: str, cfg: LLMCompressorConfig) -> str:
+    async def _call_llm_async(
+        self,
+        prompt: str,
+        cfg: LLMCompressorConfig,
+        *,
+        job_id: str | None = None,
+    ) -> str:
         return json.dumps({"kept": "async keep", "dropped": 0})
 
 

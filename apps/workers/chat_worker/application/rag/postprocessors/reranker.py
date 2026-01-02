@@ -15,6 +15,7 @@ Wire your project-specific LLM client in by passing `llm` and implementing
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import math
 import re
@@ -23,9 +24,24 @@ from logging import getLogger
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
 
 from langchain_core.messages import HumanMessage
+from langchain_core.messages.utils import count_tokens_approximately
+from langchain_core.runnables import RunnableConfig
+
+from chat_worker.domain.ports.metrics_repo import MetricsRepositoryPort
+from chat_worker.infrastructure.langchain.metrics_callback import MetricsCallback
 
 logger = getLogger("Reranker")
 
+def _supports_kwarg(func: Any, name: str) -> bool:
+    try:
+        sig = inspect.signature(func)
+    except (TypeError, ValueError):
+        return False
+    if name in sig.parameters:
+        return True
+    return any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+    )
 
 class _DocLike(Protocol):
     page_content: str
@@ -69,11 +85,25 @@ class LLMReranker:
     The `llm` object is intentionally untyped; adapt `_call_llm` to your client.
     """
 
-    def __init__(self, llm: Any, *, config: Optional[RerankConfig] = None) -> None:
+    def __init__(
+        self,
+        llm: Any,
+        *,
+        config: Optional[RerankConfig] = None,
+        metrics_repo: MetricsRepositoryPort | None = None,
+    ) -> None:
         self._llm = llm
         self._cfg = config or RerankConfig()
+        self._metrics_repo = metrics_repo
 
-    def rerank(self, query: str, docs: Sequence[_DocLike], *, config: Optional[RerankConfig] = None) -> List[_DocLike]:
+    def rerank(
+        self,
+        query: str,
+        docs: Sequence[_DocLike],
+        *,
+        config: Optional[RerankConfig] = None,
+        job_id: str | None = None,
+    ) -> List[_DocLike]:
         cfg = config or self._cfg
 
         if not query or not docs:
@@ -89,7 +119,11 @@ class LLMReranker:
             for batch in _batched(candidates, cfg.batch_size):
                 items = self._prepare_items(batch, cfg)
                 prompt = _build_prompt(query=query, items=items)
-                raw = self._call_llm(prompt, cfg)
+                call_llm = self._call_llm
+                if job_id is not None and _supports_kwarg(call_llm, "job_id"):
+                    raw = call_llm(prompt, cfg, job_id=job_id)
+                else:
+                    raw = call_llm(prompt, cfg)
                 logger.debug("[RERANK] sync llm raw: %s", _summarize_raw(raw))
                 results = _parse_llm_json(raw)
                 logger.debug(
@@ -176,6 +210,7 @@ class LLMReranker:
         docs: Sequence[_DocLike],
         *,
         config: Optional[RerankConfig] = None,
+        job_id: str | None = None,
     ) -> List[_DocLike]:
         cfg = config or self._cfg
 
@@ -192,7 +227,11 @@ class LLMReranker:
             for batch in _batched(candidates, cfg.batch_size):
                 items = self._prepare_items(batch, cfg)
                 prompt = _build_prompt(query=query, items=items)
-                raw = await self._call_llm_async(prompt, cfg)
+                call_llm = self._call_llm_async
+                if job_id is not None and _supports_kwarg(call_llm, "job_id"):
+                    raw = await call_llm(prompt, cfg, job_id=job_id)
+                else:
+                    raw = await call_llm(prompt, cfg)
                 logger.debug("[RERANK] async llm raw: %s", _summarize_raw(raw))
                 results = _parse_llm_json(raw)
                 logger.debug(
@@ -291,7 +330,13 @@ class LLMReranker:
             items.append((rid, d, preview))
         return items
 
-    def _call_llm(self, prompt: str, cfg: RerankConfig) -> str:
+    def _call_llm(
+        self,
+        prompt: str,
+        cfg: RerankConfig,
+        *,
+        job_id: str | None = None,
+    ) -> str:
         """Call your LLM client and return raw text.
 
         IMPORTANT: This is a skeleton.
@@ -305,27 +350,90 @@ class LLMReranker:
             "Return the model's raw text (should be JSON per the prompt)."
         )
 
-    async def _call_llm_async(self, prompt: str, cfg: RerankConfig) -> str:
-        return await asyncio.to_thread(self._call_llm, prompt, cfg)
+    async def _call_llm_async(
+        self,
+        prompt: str,
+        cfg: RerankConfig,
+        *,
+        job_id: str | None = None,
+    ) -> str:
+        call_llm = self._call_llm
+        if job_id is not None and _supports_kwarg(call_llm, "job_id"):
+            return await asyncio.to_thread(call_llm, prompt, cfg, job_id=job_id)
+        return await asyncio.to_thread(call_llm, prompt, cfg)
 
 
 class LangchainReranker(LLMReranker):
     """Reranker backed by a LangChain chat model with sync invoke()."""
 
-    def _call_llm(self, prompt: str, cfg: RerankConfig) -> str:
+    def _call_llm(
+        self,
+        prompt: str,
+        cfg: RerankConfig,
+        *,
+        job_id: str | None = None,
+    ) -> str:
         if not hasattr(self._llm, "invoke"):
             raise RuntimeError("LLM does not support sync invoke() for reranking")
-        result = self._llm.invoke([HumanMessage(content=prompt)])
+        config = None
+        if self._metrics_repo is not None and job_id:
+            async def _persist_row(row: dict) -> None:
+                await self._metrics_repo.upsert_job(row)
+
+            token_len = lambda s: count_tokens_approximately([s])
+            model_name = getattr(self._llm, "model", None) or "unknown"
+            provider = getattr(self._llm, "provider", None) or "unknown"
+            metric_cb = MetricsCallback(
+                job_id=job_id,
+                mode="rag",
+                span_name="rag_rerank",
+                provider=provider,
+                model=model_name,
+                persist=_persist_row,
+                token_len=token_len,
+            )
+            config = RunnableConfig(callbacks=[metric_cb], tags=["rag_rerank"])
+        if config is None:
+            result = self._llm.invoke([HumanMessage(content=prompt)])
+        else:
+            result = self._llm.invoke([HumanMessage(content=prompt)], config=config)
         return getattr(result, "content", result)
 
 
 class LangchainAsyncReranker(LLMReranker):
     """Reranker backed by a LangChain chat model with async ainvoke()."""
 
-    async def _call_llm_async(self, prompt: str, cfg: RerankConfig) -> str:
+    async def _call_llm_async(
+        self,
+        prompt: str,
+        cfg: RerankConfig,
+        *,
+        job_id: str | None = None,
+    ) -> str:
         if not hasattr(self._llm, "ainvoke"):
             raise RuntimeError("LLM does not support async ainvoke() for reranking")
-        result = await self._llm.ainvoke([HumanMessage(content=prompt)])
+        config = None
+        if self._metrics_repo is not None and job_id:
+            async def _persist_row(row: dict) -> None:
+                await self._metrics_repo.upsert_job(row)
+
+            token_len = lambda s: count_tokens_approximately([s])
+            model_name = getattr(self._llm, "model", None) or "unknown"
+            provider = getattr(self._llm, "provider", None) or "unknown"
+            metric_cb = MetricsCallback(
+                job_id=job_id,
+                mode="rag",
+                span_name="rag_rerank",
+                provider=provider,
+                model=model_name,
+                persist=_persist_row,
+                token_len=token_len,
+            )
+            config = RunnableConfig(callbacks=[metric_cb], tags=["rag_rerank"])
+        if config is None:
+            result = await self._llm.ainvoke([HumanMessage(content=prompt)])
+        else:
+            result = await self._llm.ainvoke([HumanMessage(content=prompt)], config=config)
         return getattr(result, "content", result)
 
 

@@ -10,6 +10,7 @@ CREATE TABLE llm_metrics
     trace_id          uuid        NOT NULL,
     span_id           uuid        NOT NULL,
     parent_span_id    uuid,
+    span_name         text,
     user_id           uuid,
 
     request_tag       text,
@@ -48,6 +49,7 @@ COMMENT ON COLUMN llm_metrics.request_id IS 'External request UUID, used for cro
 COMMENT ON COLUMN llm_metrics.trace_id IS 'Root trace ID for distributed tracing (OpenTelemetry style).';
 COMMENT ON COLUMN llm_metrics.span_id IS 'Child span ID (unique per LLM invocation).';
 COMMENT ON COLUMN llm_metrics.parent_span_id IS 'Parent span for hierarchical trace linking.';
+COMMENT ON COLUMN llm_metrics.span_name IS 'Human-readable span name (e.g., text, tool, rag).';
 COMMENT ON COLUMN llm_metrics.user_id IS 'User owning this request (optional for system jobs).';
 COMMENT ON COLUMN llm_metrics.request_tag IS 'Semantic tag for job type (e.g., llm:chat, llm:ingest).';
 COMMENT ON COLUMN llm_metrics.provider IS 'LLM provider or runtime backend (e.g., openai, vllm, unknown).';
@@ -147,6 +149,7 @@ SELECT id,
        trace_id,
        span_id,
        parent_span_id,
+       span_name,
        user_id,
        request_tag,
        provider,
@@ -176,6 +179,9 @@ COMMENT ON VIEW llm_metrics_compact IS 'Lightweight view for aggregated latency 
 -- Migration helpers (for existing databases)
 ALTER TABLE llm_metrics
     ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'unknown';
+
+ALTER TABLE llm_metrics
+    ADD COLUMN IF NOT EXISTS span_name text;
 
 ALTER TABLE llm_metrics
     ADD COLUMN IF NOT EXISTS queue_ms double precision;

@@ -1,3 +1,4 @@
+import inspect
 from logging import getLogger
 from typing import Any, Sequence
 
@@ -9,6 +10,16 @@ from chat_worker.application.rag.document import Document
 
 logger = getLogger("RagPipeline")
 
+def _supports_kwarg(func: Any, name: str) -> bool:
+    try:
+        sig = inspect.signature(func)
+    except (TypeError, ValueError):
+        return False
+    if name in sig.parameters:
+        return True
+    return any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+    )
 
 def _has_rerank_score(docs: Sequence[Document]) -> bool:
     for d in docs:
@@ -46,6 +57,7 @@ async def compress_docs(
     max_context: int | None,
     llm_compressor: LLMContextualCompressor | Any | None = None,
     use_llm: bool = False,
+    job_id: str | None = None,
 ) -> tuple[list[Document], int, bool]:
     compressor = HeuristicCompressor(embeddings=embeddings, max_context=max_context)
     heuristic_docs = compressor.compress_docs(query=query, docs=docs)
@@ -58,9 +70,31 @@ async def compress_docs(
 
     try:
         if hasattr(llm_compressor, "acompress_docs"):
-            out = await llm_compressor.acompress_docs(query=query, docs=heuristic_docs)
+            compress_call = llm_compressor.acompress_docs
+            if job_id is not None and _supports_kwarg(compress_call, "job_id"):
+                out = await compress_call(
+                    query=query,
+                    docs=heuristic_docs,
+                    job_id=job_id,
+                )
+            else:
+                out = await compress_call(
+                    query=query,
+                    docs=heuristic_docs,
+                )
         else:
-            out = llm_compressor.compress_docs(query=query, docs=heuristic_docs)
+            compress_call = llm_compressor.compress_docs
+            if job_id is not None and _supports_kwarg(compress_call, "job_id"):
+                out = compress_call(
+                    query=query,
+                    docs=heuristic_docs,
+                    job_id=job_id,
+                )
+            else:
+                out = compress_call(
+                    query=query,
+                    docs=heuristic_docs,
+                )
     except Exception as e:
         logger.warning("[RAG][compress][llm] failed: %s", e)
         return heuristic_docs, heuristic_hits, False

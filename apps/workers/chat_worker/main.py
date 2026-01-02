@@ -156,9 +156,9 @@ async def main():
 
     reranker = None
     if hasattr(rerank_llm_client, "ainvoke"):
-        reranker = LangchainAsyncReranker(rerank_llm_client)
+        reranker = LangchainAsyncReranker(rerank_llm_client, metrics_repo=metrics_repo)
     elif hasattr(rerank_llm_client, "invoke"):
-        reranker = LangchainReranker(rerank_llm_client)
+        reranker = LangchainReranker(rerank_llm_client, metrics_repo=metrics_repo)
     else:
         log.warning(
             "Rerank LLM does not support invoke/ainvoke; rerank disabled",
@@ -179,9 +179,17 @@ async def main():
 
         cfg = LLMCompressorConfig(model=resolved_model)
         if hasattr(compress_llm_client, "ainvoke"):
-            llm_compressor = LangchainAsyncCompressor(compress_llm_client, cfg=cfg)
+            llm_compressor = LangchainAsyncCompressor(
+                compress_llm_client,
+                cfg=cfg,
+                metrics_repo=metrics_repo,
+            )
         elif hasattr(compress_llm_client, "invoke"):
-            llm_compressor = LangchainCompressor(compress_llm_client, cfg=cfg)
+            llm_compressor = LangchainCompressor(
+                compress_llm_client,
+                cfg=cfg,
+                metrics_repo=metrics_repo,
+            )
         else:
             log.warning(
                 "Compress LLM does not support invoke/ainvoke; compression disabled",
@@ -214,7 +222,7 @@ async def main():
     rag_chain = pipeline.build()  # 🔁 build once; reuse per request
 
     history_service = ChatHistoryService(history_repo, system_prompt, settings.MAX_CTX_TOKENS)
-    title_service = ChatTitleService(session_repo, title_llm_adapter, xadd_session_event)
+    title_service = ChatTitleService(session_repo, metrics_repo, title_llm_adapter, xadd_session_event)
     llm_service = ChatLLMService(
         settings,
         history_service,

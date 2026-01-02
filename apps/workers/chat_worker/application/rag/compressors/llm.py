@@ -3,17 +3,32 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 from dataclasses import dataclass
 from logging import getLogger
 from typing import Any, Dict, List, Optional, Sequence
 
 from langchain_core.messages import HumanMessage
+from langchain_core.messages.utils import count_tokens_approximately
+from langchain_core.runnables import RunnableConfig
 
 from chat_worker.application.rag.document import Document
+from chat_worker.domain.ports.metrics_repo import MetricsRepositoryPort
+from chat_worker.infrastructure.langchain.metrics_callback import MetricsCallback
 
 logger = getLogger("RagPipeline")
 
+def _supports_kwarg(func: Any, name: str) -> bool:
+    try:
+        sig = inspect.signature(func)
+    except (TypeError, ValueError):
+        return False
+    if name in sig.parameters:
+        return True
+    return any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+    )
 
 @dataclass(frozen=True)
 class LLMCompressorConfig:
@@ -119,11 +134,23 @@ class LLMContextualCompressor:
     Otherwise, override `_call_llm(...)` to adapt your client.
     """
 
-    def __init__(self, llm: Any, cfg: Optional[LLMCompressorConfig] = None):
+    def __init__(
+        self,
+        llm: Any,
+        cfg: Optional[LLMCompressorConfig] = None,
+        metrics_repo: MetricsRepositoryPort | None = None,
+    ):
         self._llm = llm
         self.cfg = cfg or LLMCompressorConfig()
+        self._metrics_repo = metrics_repo
 
-    def compress_docs(self, *, query: str, docs: Sequence[Document]) -> List[Document]:
+    def compress_docs(
+        self,
+        *,
+        query: str,
+        docs: Sequence[Document],
+        job_id: str | None = None,
+    ) -> List[Document]:
         if not docs:
             return []
 
@@ -146,7 +173,11 @@ class LLMContextualCompressor:
             )
 
             try:
-                raw = self._call_llm(prompt, self.cfg)
+                call_llm = self._call_llm
+                if job_id is not None and _supports_kwarg(call_llm, "job_id"):
+                    raw = call_llm(prompt, self.cfg, job_id=job_id)
+                else:
+                    raw = call_llm(prompt, self.cfg)
             except Exception as e:
                 if self.cfg.fail_open:
                     logger.warning(
@@ -214,7 +245,13 @@ class LLMContextualCompressor:
         logger.debug("[RAG][llm-compress] done: out=%s", len(out))
         return out
 
-    async def acompress_docs(self, *, query: str, docs: Sequence[Document]) -> List[Document]:
+    async def acompress_docs(
+        self,
+        *,
+        query: str,
+        docs: Sequence[Document],
+        job_id: str | None = None,
+    ) -> List[Document]:
         if not docs:
             return []
 
@@ -237,7 +274,11 @@ class LLMContextualCompressor:
             )
 
             try:
-                raw = await self._call_llm_async(prompt, self.cfg)
+                call_llm = self._call_llm_async
+                if job_id is not None and _supports_kwarg(call_llm, "job_id"):
+                    raw = await call_llm(prompt, self.cfg, job_id=job_id)
+                else:
+                    raw = await call_llm(prompt, self.cfg)
             except Exception as e:
                 if self.cfg.fail_open:
                     logger.warning(
@@ -305,7 +346,13 @@ class LLMContextualCompressor:
         logger.debug("[RAG][llm-compress][async] done: out=%s", len(out))
         return out
 
-    def _call_llm(self, prompt: str, cfg: LLMCompressorConfig) -> str:
+    def _call_llm(
+        self,
+        prompt: str,
+        cfg: LLMCompressorConfig,
+        *,
+        job_id: str | None = None,
+    ) -> str:
         """Call your LLM client and return raw text.
 
         IMPORTANT: This is a skeleton.
@@ -324,17 +371,53 @@ class LLMContextualCompressor:
             "Return the model's raw text (should be JSON per the prompt)."
         )
 
-    async def _call_llm_async(self, prompt: str, cfg: LLMCompressorConfig) -> str:
-        return await asyncio.to_thread(self._call_llm, prompt, cfg)
+    async def _call_llm_async(
+        self,
+        prompt: str,
+        cfg: LLMCompressorConfig,
+        *,
+        job_id: str | None = None,
+    ) -> str:
+        call_llm = self._call_llm
+        if job_id is not None and _supports_kwarg(call_llm, "job_id"):
+            return await asyncio.to_thread(call_llm, prompt, cfg, job_id=job_id)
+        return await asyncio.to_thread(call_llm, prompt, cfg)
 
 
 class LangchainCompressor(LLMContextualCompressor):
     """Compressor backed by a LangChain chat model with sync invoke()."""
 
-    def _call_llm(self, prompt: str, cfg: LLMCompressorConfig) -> str:
+    def _call_llm(
+        self,
+        prompt: str,
+        cfg: LLMCompressorConfig,
+        *,
+        job_id: str | None = None,
+    ) -> str:
         if not hasattr(self._llm, "invoke"):
             raise RuntimeError("LLM does not support sync invoke() for compression")
-        result = self._llm.invoke([HumanMessage(content=prompt)])
+        config = None
+        if self._metrics_repo is not None and job_id:
+            async def _persist_row(row: dict) -> None:
+                await self._metrics_repo.upsert_job(row)
+
+            token_len = lambda s: count_tokens_approximately([s])
+            model_name = getattr(self._llm, "model", None) or cfg.model or "unknown"
+            provider = getattr(self._llm, "provider", None) or "unknown"
+            metric_cb = MetricsCallback(
+                job_id=job_id,
+                mode="rag",
+                span_name="rag_compress",
+                provider=provider,
+                model=model_name,
+                persist=_persist_row,
+                token_len=token_len,
+            )
+            config = RunnableConfig(callbacks=[metric_cb], tags=["rag_compress"])
+        if config is None:
+            result = self._llm.invoke([HumanMessage(content=prompt)])
+        else:
+            result = self._llm.invoke([HumanMessage(content=prompt)], config=config)
         return getattr(result, "content", result)
 
 
@@ -344,8 +427,35 @@ class LangchainAsyncCompressor(LLMContextualCompressor):
     def compress_docs(self, *, query: str, docs: Sequence[Document]) -> List[Document]:
         raise RuntimeError("Use acompress_docs() with LangchainAsyncCompressor")
 
-    async def _call_llm_async(self, prompt: str, cfg: LLMCompressorConfig) -> str:
+    async def _call_llm_async(
+        self,
+        prompt: str,
+        cfg: LLMCompressorConfig,
+        *,
+        job_id: str | None = None,
+    ) -> str:
         if not hasattr(self._llm, "ainvoke"):
             raise RuntimeError("LLM does not support async ainvoke() for compression")
-        result = await self._llm.ainvoke([HumanMessage(content=prompt)])
+        config = None
+        if self._metrics_repo is not None and job_id:
+            async def _persist_row(row: dict) -> None:
+                await self._metrics_repo.upsert_job(row)
+
+            token_len = lambda s: count_tokens_approximately([s])
+            model_name = getattr(self._llm, "model", None) or cfg.model or "unknown"
+            provider = getattr(self._llm, "provider", None) or "unknown"
+            metric_cb = MetricsCallback(
+                job_id=job_id,
+                mode="rag",
+                span_name="rag_compress",
+                provider=provider,
+                model=model_name,
+                persist=_persist_row,
+                token_len=token_len,
+            )
+            config = RunnableConfig(callbacks=[metric_cb], tags=["rag_compress"])
+        if config is None:
+            result = await self._llm.ainvoke([HumanMessage(content=prompt)])
+        else:
+            result = await self._llm.ainvoke([HumanMessage(content=prompt)], config=config)
         return getattr(result, "content", result)

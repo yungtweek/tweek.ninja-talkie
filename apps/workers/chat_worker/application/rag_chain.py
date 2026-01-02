@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field, replace
+import inspect
 from logging import getLogger
 import math
 from time import monotonic
@@ -34,6 +35,18 @@ from chat_worker.application.rag.retrievers.weaviate_hybrid import WeaviateHybri
 
 
 logger = getLogger("RagPipeline")
+
+
+def _supports_kwarg(func: Any, name: str) -> bool:
+    try:
+        sig = inspect.signature(func)
+    except (TypeError, ValueError):
+        return False
+    if name in sig.parameters:
+        return True
+    return any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+    )
 
 
 @dataclass
@@ -225,6 +238,7 @@ class RagPipeline:
         *,
         max_context: int | None = None,
         use_llm: bool | None = None,
+        job_id: str | None = None,
     ) -> tuple[list[Document], int, bool]:
         """Compress retrieved documents while preserving scores and ranks."""
         if use_llm is None:
@@ -236,16 +250,31 @@ class RagPipeline:
             max_context=self.max_context if max_context is None else max_context,
             llm_compressor=self.llm_compressor,
             use_llm=use_llm,
+            job_id=job_id,
         )
 
-    async def rerank_docs(self, docs: Sequence[Document], query: str) -> list[Document]:
+    async def rerank_docs(
+        self,
+        docs: Sequence[Document],
+        query: str,
+        *,
+        job_id: str | None = None,
+    ) -> list[Document]:
         if self.reranker is None:
             return list(docs)
         try:
             if hasattr(self.reranker, "arerank"):
-                reranked = await self.reranker.arerank(query, docs)
+                rerank_call = self.reranker.arerank
+                if job_id is not None and _supports_kwarg(rerank_call, "job_id"):
+                    reranked = await rerank_call(query, docs, job_id=job_id)
+                else:
+                    reranked = await rerank_call(query, docs)
             else:
-                reranked = self.reranker.rerank(query, docs)
+                rerank_call = self.reranker.rerank
+                if job_id is not None and _supports_kwarg(rerank_call, "job_id"):
+                    reranked = rerank_call(query, docs, job_id=job_id)
+                else:
+                    reranked = rerank_call(query, docs)
             return list(reranked)
         except Exception as e:
             logger.warning("[RAG] rerank failed: %s", e)
@@ -520,7 +549,12 @@ class RagPipeline:
                 rerank_batch_size=rerank_cfg_value(self.reranker, "batch_size"),
                 rerank_max_doc_chars=rerank_cfg_value(self.reranker, "max_doc_chars"),
             )
-        reranked_docs = await self.rerank_docs(docs, q)
+        job_id = stream_ctx.get("job_id")
+        rerank_call = self.rerank_docs
+        if job_id is not None and _supports_kwarg(rerank_call, "job_id"):
+            reranked_docs = await rerank_call(docs, q, job_id=job_id)
+        else:
+            reranked_docs = await rerank_call(docs, q)
         if stream_ctx.get("has_stream"):
             await emit_stage_event(
                 stream_ctx,
@@ -676,12 +710,23 @@ class RagPipeline:
                 max_context=max_context,
                 use_llm=use_llm,
             )
-        compressed_docs, heuristic_hits, llm_applied = await self.compress_docs(
-            mmr_docs,
-            q,
-            max_context=max_context,
-            use_llm=use_llm,
-        )
+        job_id = stream_ctx.get("job_id")
+        compress_call = self.compress_docs
+        if job_id is not None and _supports_kwarg(compress_call, "job_id"):
+            compressed_docs, heuristic_hits, llm_applied = await compress_call(
+                mmr_docs,
+                q,
+                max_context=max_context,
+                use_llm=use_llm,
+                job_id=job_id,
+            )
+        else:
+            compressed_docs, heuristic_hits, llm_applied = await compress_call(
+                mmr_docs,
+                q,
+                max_context=max_context,
+                use_llm=use_llm,
+            )
         if stream_ctx.get("has_stream"):
             await emit_stage_event(
                 stream_ctx,
