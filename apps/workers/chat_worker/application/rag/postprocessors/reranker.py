@@ -15,6 +15,7 @@ Wire your project-specific LLM client in by passing `llm` and implementing
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import math
 import re
@@ -31,6 +32,16 @@ from chat_worker.infrastructure.langchain.metrics_callback import MetricsCallbac
 
 logger = getLogger("Reranker")
 
+def _supports_kwarg(func: Any, name: str) -> bool:
+    try:
+        sig = inspect.signature(func)
+    except (TypeError, ValueError):
+        return False
+    if name in sig.parameters:
+        return True
+    return any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+    )
 
 class _DocLike(Protocol):
     page_content: str
@@ -108,7 +119,11 @@ class LLMReranker:
             for batch in _batched(candidates, cfg.batch_size):
                 items = self._prepare_items(batch, cfg)
                 prompt = _build_prompt(query=query, items=items)
-                raw = self._call_llm(prompt, cfg, job_id=job_id)
+                call_llm = self._call_llm
+                if job_id is not None and _supports_kwarg(call_llm, "job_id"):
+                    raw = call_llm(prompt, cfg, job_id=job_id)
+                else:
+                    raw = call_llm(prompt, cfg)
                 logger.debug("[RERANK] sync llm raw: %s", _summarize_raw(raw))
                 results = _parse_llm_json(raw)
                 logger.debug(
@@ -212,7 +227,11 @@ class LLMReranker:
             for batch in _batched(candidates, cfg.batch_size):
                 items = self._prepare_items(batch, cfg)
                 prompt = _build_prompt(query=query, items=items)
-                raw = await self._call_llm_async(prompt, cfg, job_id=job_id)
+                call_llm = self._call_llm_async
+                if job_id is not None and _supports_kwarg(call_llm, "job_id"):
+                    raw = await call_llm(prompt, cfg, job_id=job_id)
+                else:
+                    raw = await call_llm(prompt, cfg)
                 logger.debug("[RERANK] async llm raw: %s", _summarize_raw(raw))
                 results = _parse_llm_json(raw)
                 logger.debug(
@@ -338,7 +357,10 @@ class LLMReranker:
         *,
         job_id: str | None = None,
     ) -> str:
-        return await asyncio.to_thread(self._call_llm, prompt, cfg, job_id=job_id)
+        call_llm = self._call_llm
+        if job_id is not None and _supports_kwarg(call_llm, "job_id"):
+            return await asyncio.to_thread(call_llm, prompt, cfg, job_id=job_id)
+        return await asyncio.to_thread(call_llm, prompt, cfg)
 
 
 class LangchainReranker(LLMReranker):

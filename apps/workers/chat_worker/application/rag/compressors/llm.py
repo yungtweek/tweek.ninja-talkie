@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 from dataclasses import dataclass
 from logging import getLogger
@@ -18,6 +19,16 @@ from chat_worker.infrastructure.langchain.metrics_callback import MetricsCallbac
 
 logger = getLogger("RagPipeline")
 
+def _supports_kwarg(func: Any, name: str) -> bool:
+    try:
+        sig = inspect.signature(func)
+    except (TypeError, ValueError):
+        return False
+    if name in sig.parameters:
+        return True
+    return any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+    )
 
 @dataclass(frozen=True)
 class LLMCompressorConfig:
@@ -162,7 +173,11 @@ class LLMContextualCompressor:
             )
 
             try:
-                raw = self._call_llm(prompt, self.cfg, job_id=job_id)
+                call_llm = self._call_llm
+                if job_id is not None and _supports_kwarg(call_llm, "job_id"):
+                    raw = call_llm(prompt, self.cfg, job_id=job_id)
+                else:
+                    raw = call_llm(prompt, self.cfg)
             except Exception as e:
                 if self.cfg.fail_open:
                     logger.warning(
@@ -259,7 +274,11 @@ class LLMContextualCompressor:
             )
 
             try:
-                raw = await self._call_llm_async(prompt, self.cfg, job_id=job_id)
+                call_llm = self._call_llm_async
+                if job_id is not None and _supports_kwarg(call_llm, "job_id"):
+                    raw = await call_llm(prompt, self.cfg, job_id=job_id)
+                else:
+                    raw = await call_llm(prompt, self.cfg)
             except Exception as e:
                 if self.cfg.fail_open:
                     logger.warning(
@@ -359,7 +378,10 @@ class LLMContextualCompressor:
         *,
         job_id: str | None = None,
     ) -> str:
-        return await asyncio.to_thread(self._call_llm, prompt, cfg, job_id=job_id)
+        call_llm = self._call_llm
+        if job_id is not None and _supports_kwarg(call_llm, "job_id"):
+            return await asyncio.to_thread(call_llm, prompt, cfg, job_id=job_id)
+        return await asyncio.to_thread(call_llm, prompt, cfg)
 
 
 class LangchainCompressor(LLMContextualCompressor):
