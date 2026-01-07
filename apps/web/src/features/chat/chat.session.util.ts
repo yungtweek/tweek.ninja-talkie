@@ -16,8 +16,8 @@ const toCursor = (value: string) => {
 };
 
 const sessionToCursor = (session: ChatSessionMetaFragment) => {
-  const createdAt = session.createdAt ?? new Date().toISOString();
-  return toCursor(`${createdAt}|${session.id}`);
+  const ts = session.updatedAt ?? session.createdAt ?? new Date().toISOString();
+  return toCursor(`${ts}|${session.id}`);
 };
 
 export const writeSessionMeta = (cache: ApolloCache, session: ChatSessionMetaFragment) => {
@@ -44,13 +44,14 @@ export const modifySessionMeta = (cache: ApolloCache, session: ChatSessionMetaFr
           id: session.id,
         });
         const nodeRef: Reference | null = nodeId ? ({ __ref: nodeId } as Reference) : null;
+        if (!nodeRef) return existing;
         const cursor = sessionToCursor(session);
-        const edge = {
-          __typename: 'ChatSessionEdge',
-          cursor,
-          node: nodeRef,
-        };
         if (!existing) {
+          const edge = {
+            __typename: 'ChatSessionEdge',
+            cursor,
+            node: nodeRef,
+          };
           return {
             __typename: 'ChatSessionConnection',
             edges: [edge],
@@ -64,18 +65,21 @@ export const modifySessionMeta = (cache: ApolloCache, session: ChatSessionMetaFr
           };
         }
         const edges = Array.isArray(existing.edges) ? existing.edges.slice() : [];
-        const already = nodeRef
-          ? edges.some((e: any) => e?.node?.__ref === (nodeRef as any).__ref)
-          : false;
-        const nextEdges = nodeRef ? (already ? edges : [edge, ...edges]) : edges;
+        const refKey = (nodeRef as any).__ref;
+        const idx = edges.findIndex((e: any) => e?.node?.__ref === refKey);
+        const existingCursor = idx >= 0 ? edges[idx]?.cursor ?? null : null;
+        const filtered = edges.filter((e: any) => e?.node?.__ref !== refKey);
+        const edge = {
+          __typename: 'ChatSessionEdge',
+          cursor: existingCursor ?? cursor,
+          node: nodeRef,
+        };
+        const nextEdges = [edge, ...filtered];
         const prevPageInfo = existing.pageInfo ?? {};
-        const firstEdgeCursor = nextEdges.length ? nextEdges[0]?.cursor ?? null : null;
-        const lastEdgeCursor = nextEdges.length
+        const startCursor = nextEdges.length ? nextEdges[0]?.cursor ?? null : null;
+        const endCursor = nextEdges.length
           ? nextEdges[nextEdges.length - 1]?.cursor ?? null
           : null;
-        const startCursor =
-          !already && nodeRef ? cursor : prevPageInfo.startCursor ?? firstEdgeCursor ?? null;
-        const endCursor = prevPageInfo.endCursor ?? lastEdgeCursor ?? null;
         return {
           __typename: 'ChatSessionConnection',
           edges: nextEdges,
@@ -83,8 +87,8 @@ export const modifySessionMeta = (cache: ApolloCache, session: ChatSessionMetaFr
             __typename: 'PageInfo',
             hasPreviousPage: prevPageInfo.hasPreviousPage ?? false,
             hasNextPage: prevPageInfo.hasNextPage ?? false,
-            startCursor,
-            endCursor,
+            startCursor: startCursor ?? prevPageInfo.startCursor ?? null,
+            endCursor: endCursor ?? prevPageInfo.endCursor ?? null,
           },
         };
       },
