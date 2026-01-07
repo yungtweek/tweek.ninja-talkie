@@ -23,6 +23,9 @@ let mockCache: {
   identify: jest.Mock;
   readFragment: jest.Mock;
 };
+const adoptNewSession = jest.fn();
+const routerReplace = jest.fn();
+let pathname = '/chat/session-1';
 
 jest.mock('@apollo/client/react', () => ({
   useApolloClient: () => ({
@@ -57,12 +60,12 @@ jest.mock('@/features/chat/chat.store', () => ({
 }));
 
 jest.mock('@/providers/ChatProvider', () => ({
-  useChatUI: () => ({ adoptNewSession: jest.fn() }),
+  useChatUI: () => ({ adoptNewSession }),
 }));
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: jest.fn() }),
-  usePathname: () => '/chat/session-1',
+  useRouter: () => ({ replace: routerReplace }),
+  usePathname: () => pathname,
 }));
 
 jest.mock('@/actions/chat/enqueue.action', () => ({
@@ -82,6 +85,7 @@ jest.mock('@/features/chat/chat.session.util', () => ({
 describe('useChatSessionStream', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    pathname = '/chat/session-1';
     mockCache = {
       identify: jest.fn().mockReturnValue('ChatSession:session-1'),
       readFragment: jest.fn().mockReturnValue({
@@ -114,6 +118,7 @@ describe('useChatSessionStream', () => {
     await waitFor(() => {
       expect(writeSessionMeta).toHaveBeenCalledTimes(1);
       expect(modifySessionMeta).toHaveBeenCalledTimes(1);
+      expect(routerReplace).not.toHaveBeenCalled();
     });
   });
 
@@ -134,6 +139,52 @@ describe('useChatSessionStream', () => {
     await waitFor(() => {
       expect(writeSessionMeta).not.toHaveBeenCalled();
       expect(modifySessionMeta).not.toHaveBeenCalled();
+      expect(routerReplace).not.toHaveBeenCalled();
+    });
+  });
+
+  it('adopts and routes immediately after enqueue succeeds for new session', async () => {
+    pathname = '/chat';
+    (enqueueAction as jest.Mock).mockResolvedValueOnce({
+      success: true,
+      data: { sessionId: 'session-new' },
+    });
+
+    const { result } = renderHook(() => useChatSessionStream(null));
+    const fd = new FormData();
+    fd.set('text', 'hello');
+
+    await act(async () => {
+      await result.current.submitAction(fd);
+    });
+
+    await waitFor(() => {
+      expect(adoptNewSession).toHaveBeenCalledTimes(1);
+      expect(adoptNewSession).toHaveBeenCalledWith('session-new');
+      expect(routerReplace).toHaveBeenCalledWith('/chat/session-new', { scroll: false });
+      expect(writeSessionMeta).not.toHaveBeenCalled();
+      expect(modifySessionMeta).not.toHaveBeenCalled();
+    });
+  });
+
+  it('does not route when enqueue fails for new session', async () => {
+    pathname = '/chat';
+    (enqueueAction as jest.Mock).mockResolvedValueOnce({
+      success: false,
+      data: { sessionId: null },
+    });
+
+    const { result } = renderHook(() => useChatSessionStream(null));
+    const fd = new FormData();
+    fd.set('text', 'hello');
+
+    await act(async () => {
+      await result.current.submitAction(fd);
+    });
+
+    await waitFor(() => {
+      expect(adoptNewSession).not.toHaveBeenCalled();
+      expect(routerReplace).not.toHaveBeenCalled();
     });
   });
 });
