@@ -105,6 +105,26 @@ export function useChatSessionStream(sessionId: string | null) {
           return { error: 'SSE open failed', jobId };
         }
 
+        if (thisSessionId) {
+          const now = new Date().toISOString();
+          const cacheId = client.cache.identify({ __typename: 'ChatSession', id: thisSessionId });
+          const existing = cacheId
+            ? client.readFragment<ChatSessionMetaFragment>({
+                id: cacheId,
+                fragment: ChatSessionMetaFragmentDoc,
+              })
+            : null;
+          const next: ChatSessionMetaFragment = {
+            __typename: 'ChatSession',
+            id: thisSessionId,
+            title: existing?.title ?? null,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+          };
+          writeSessionMeta(client.cache, next);
+          modifySessionMeta(client.cache, next);
+        }
+
         // Handle session creation and updates via SSE events
         if (thisSessionId === null) {
           openSessionEvents(jobId, {
